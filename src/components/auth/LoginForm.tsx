@@ -1,0 +1,160 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/authStore';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
+import { Wallet, Mail, Lock } from 'lucide-react';
+import { showErrorToast } from '../../lib/toast';
+
+const LoginForm: React.FC = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const { login } = useAuthStore();
+  const navigate = useNavigate();
+  
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!email || !password) {
+      showErrorToast('Please enter your credentials');
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    try {
+      const success = await login(email, password);
+      
+      if (success) {
+        navigate('/dashboard');
+      } else {
+        if (email.endsWith('@example.com')) {
+          showErrorToast('Invalid demo credentials');
+        } else {
+          showErrorToast('Invalid credentials');
+        }
+      }
+    } catch (err: any) {
+      if (err?.message?.includes('Email not confirmed')) {
+        if (email.endsWith('@example.com')) {
+          showErrorToast('Demo login failed');
+        } else {
+          showErrorToast('Please confirm your email');
+        }
+      } else {
+        showErrorToast('Login failed');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleDemoAccountClick = (demoEmail: string) => {
+    setEmail(demoEmail);
+    setPassword('1234');
+    if(demoEmail === 'becky@abc.com') {
+      setPassword('123456');
+    }
+  };
+  
+  return (
+    <div className="min-h-fit bg-gray-50 flex flex-col justify-center py-4 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="flex justify-center">
+          <Wallet className="h-12 w-12 text-primary-600" />
+        </div>
+        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          Sign in to PayFlow
+        </h2>
+        <p className="mt-2 text-center text-sm text-gray-600">
+          Payment approval management system
+        </p>
+      </div>
+
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            <div>
+              <Input
+                label="Email address"
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                fullWidth
+                leftIcon={<Mail className="h-5 w-5 text-gray-400" />}
+                placeholder="john@example.com"
+              />
+            </div>
+
+            <div>
+              <Input
+                label="Password"
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                fullWidth
+                leftIcon={<Lock className="h-5 w-5 text-gray-400" />}
+              />
+            </div>
+
+            <div>
+              <Button
+                type="submit"
+                fullWidth
+                isLoading={isLoading}
+              >
+                Sign in
+              </Button>
+            </div>
+            
+            <div className="text-sm text-center">
+              <p className="text-gray-600 mb-2">
+                Demo accounts:
+              </p>
+              <div className="flex justify-center space-x-4">
+                <button 
+                  type="button" 
+                  className="text-primary-600 hover:text-primary-500"
+                  onClick={() => handleDemoAccountClick('employee@example.com')}
+                >
+                  Alex
+                </button>
+                <button 
+                  type="button" 
+                  className="text-primary-600 hover:text-primary-500"
+                  onClick={() => handleDemoAccountClick('becky@abc.com')}
+                >
+                  Becky
+                </button>
+                <button 
+                  type="button" 
+                  className="text-primary-600 hover:text-primary-500"
+                  onClick={() => handleDemoAccountClick('admin@example.com')}
+                >
+                  Admin
+                </button>
+                <button 
+                  type="button" 
+                  className="text-primary-600 hover:text-primary-500"
+                  onClick={() => handleDemoAccountClick('accounts@example.com')}
+                >
+                  Accounts
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default LoginForm;

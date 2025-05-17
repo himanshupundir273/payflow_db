@@ -1,0 +1,617 @@
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/authStore';
+import { usePaymentStore } from '../../store/paymentStore';
+import Button from '../ui/Button';
+import Input from '../ui/Input';
+import Card from '../ui/Card';
+import { format } from 'date-fns';
+import { showSuccessToast, showErrorToast } from '../../lib/toast';
+import { Formik, Form, Field, FieldArray, FormikErrors, FormikTouched } from 'formik';
+import * as Yup from 'yup';
+import { Plus, X, Upload, File } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+
+interface Bill {
+  billNumber: string;
+  billDate: string;
+}
+
+interface Attachment {
+  id?: string;
+  description: string;
+  file?: File;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
+  fileSize?: number;
+}
+
+interface FormValues {
+  vendorName: string;
+  totalOutstanding: string;
+  advanceDetails: 'tax_invoice' | 'proforma_invoice';
+  paymentAmount: string;
+  itemDescription: string;
+  bills: Bill[];
+  attachments: Attachment[];
+  companyName: string;
+  bankName: string;
+}
+
+interface PaymentRequestFormProps {
+  editingPaymentId?: string;
+}
+
+const COMPANY_OPTIONS = [
+  'Atlanta',
+  'Atlanta (L)',
+  'Bestco',
+  'Copperlite',
+  'NotoFire',
+  'Valuecon',
+  'Satguru',
+];
+
+const BANK_OPTIONS = [
+  'HDFC Bank',
+  'ICICI Bank',
+];
+
+const validationSchema = Yup.object().shape({
+  vendorName: Yup.string().required('Vendor name is required'),
+  totalOutstanding: Yup.number()
+    .required('Total outstanding amount is required')
+    .min(0, 'Amount must be zero or positive'),
+  advanceDetails: Yup.string()
+    .required('Advance details are required')
+    .oneOf(['tax_invoice', 'advance_(bill/PI)', 'advance'], 'Invalid advance details type'),
+  paymentAmount: Yup.number()
+    .required('Payment amount is required')
+    .min(0, 'Amount must be zero or positive')
+    .test('payment-amount', 'Payment amount cannot exceed total outstanding', function(value) {
+      const totalOutstanding = this.parent.totalOutstanding;
+      return !value || !totalOutstanding || value <= totalOutstanding;
+    }),
+  itemDescription: Yup.string().required('Item description is required'),
+  bills: Yup.array().of(
+    Yup.object().shape({
+      billNumber: Yup.string().required('Bill number is required'),
+      billDate: Yup.date().required('Bill date is required'),
+    })
+  ).min(1, 'At least one bill is required'),
+  attachments: Yup.array().of(
+    Yup.object().shape({
+      description: Yup.string().required('Description is required'),
+      file: Yup.mixed<File>()
+        .test('fileSize', 'File size must be less than 5MB', (value) => {
+          if (!value) return true;
+          return (value as File).size <= 5 * 1024 * 1024;
+        })
+        .test('fileType', 'Only PDF and image files are allowed', (value) => {
+          if (!value) return true;
+          const file = value as File;
+          const validTypes = [
+            'application/pdf',
+            'image/jpeg',
+            'image/jpg',
+            'image/png',
+            'image/gif',
+            'image/webp'
+          ];
+          return validTypes.includes(file.type);
+        })
+    })
+  ).optional(),
+  companyName: Yup.string()
+    .required('Company name is required')
+    .oneOf(COMPANY_OPTIONS, 'Please select a valid company'),
+  bankName: Yup.string()
+    .required('Bank name is required')
+    .oneOf(BANK_OPTIONS, 'Please select a valid bank'),
+});
+
+const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentId }) => {
+  const { user } = useAuthStore();
+  const { addPayment, updatePayment } = usePaymentStore();
+  const navigate = useNavigate();
+  const [isUploading, setIsUploading] = useState(false);
+  const [isQueryPayment, setIsQueryPayment] = useState(false);
+  const editingPaymentData = localStorage.getItem('editingPaymentData');
+
+  // Clear localStorage items when component unmounts
+  useEffect(() => {
+    return () => {
+      localStorage.removeItem('editingPaymentData');
+    };
+  }, []);
+
+  // Check if this is a payment with a query
+  useEffect(() => {
+    if (editingPaymentId) {
+      const checkPaymentStatus = async () => {
+        const { data: payment } = await supabase
+          .from('payments')
+          .select('status')
+          .eq('id', editingPaymentId)
+          .single();
+        
+        setIsQueryPayment(payment?.status === 'query_raised');
+      };
+      checkPaymentStatus();
+    }
+  }, [editingPaymentId]);
+
+  const initialValues: FormValues = editingPaymentData 
+    ? JSON.parse(editingPaymentData)
+    : {
+        vendorName: '',
+        totalOutstanding: '',
+        advanceDetails: 'tax_invoice',
+        paymentAmount: '',
+        itemDescription: '',
+        bills: [{ billNumber: '', billDate: format(new Date(), 'yyyy-MM-dd') }],
+        attachments: [],
+        companyName: '',
+        bankName: '',
+      };
+
+  const handleSubmit = async (values: FormValues, { setSubmitting }: { setSubmitting: (isSubmitting: boolean) => void }) => {
+    try {
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      setIsUploading(true);
+
+      const totalOutstanding = Number(values.totalOutstanding);
+      const paymentAmount = Number(values.paymentAmount);
+      const balanceAmount = totalOutstanding - paymentAmount;
+
+      if (balanceAmount < 0) {
+        throw new Error('Balance amount cannot be negative');
+      }
+
+      const paymentData = {
+        vendorName: values.vendorName,
+        totalOutstanding,
+        advanceDetails: values.advanceDetails,
+        paymentAmount,
+        balanceAmount,
+        itemDescription: values.itemDescription,
+        bills: values.bills.map(bill => ({
+          id: '',
+          billNumber: bill.billNumber,
+          billDate: new Date(bill.billDate).toISOString(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        })),
+        attachments: values.attachments.map(attachment => ({
+          id: attachment.id || '',
+          description: attachment.description,
+          file: attachment.file,
+          fileUrl: attachment.fileUrl || '',
+          fileName: attachment.fileName || '',
+          fileType: attachment.fileType || '',
+          fileSize: attachment.fileSize || 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        })),
+        companyName: values.companyName,
+        bankName: values.bankName
+      };
+
+      if (editingPaymentId) {
+        // Update existing payment
+        await updatePayment(editingPaymentId, paymentData);
+        showSuccessToast('Payment updated successfully');
+        localStorage.removeItem('editingPaymentData');
+        navigate('/payments');
+      } else {
+        // Create new payment
+        await addPayment({
+          ...paymentData,
+          date: new Date().toISOString(),
+          requestedBy: user
+        });
+        showSuccessToast('Payment request submitted');
+        navigate('/payments');
+      }
+    } catch (error) {
+      showErrorToast(editingPaymentId ? 'Failed to update payment' : 'Failed to submit payment request');
+      console.error('Error submitting payment request:', error);
+    } finally {
+      setSubmitting(false);
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto my-8 animate-fade-in">
+      <Card title={isQueryPayment ? "Update Payment" : "Submit Payment Request"}>
+        <Formik
+          initialValues={initialValues}
+          validationSchema={validationSchema}
+          onSubmit={handleSubmit}
+        >
+          {({ errors, touched, isSubmitting, values, setFieldValue }) => {
+            const handleRemoveAttachment = async (index: number) => {
+              const attachment = values.attachments[index];
+              
+              // If this is an existing attachment (has an ID), we need to delete it from storage and database
+              if (attachment.id && attachment.fileUrl) {
+                try {
+                  // Delete from storage
+                  await supabase.storage.from('attachments').remove([attachment.fileUrl]);
+                  
+                  // Delete from database
+                  await supabase.from('attachments').delete().eq('id', attachment.id);
+                } catch (error) {
+                  console.error('Error deleting attachment:', error);
+                  showErrorToast('Failed to delete attachment');
+                  return;
+                }
+              }
+              
+              // Remove from form state
+              const newAttachments = [...values.attachments];
+              newAttachments.splice(index, 1);
+              setFieldValue('attachments', newAttachments);
+            };
+
+            const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, index: number) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                // Check file size immediately
+                if (file.size > 5 * 1024 * 1024) {
+                  showErrorToast('File size must be less than 5MB');
+                  event.target.value = ''; // Clear the file input
+                  return;
+                }
+
+                const newAttachments = [...values.attachments];
+                newAttachments[index] = {
+                  ...newAttachments[index],
+                  file,
+                  fileName: file.name,
+                  fileType: file.type,
+                  fileSize: file.size,
+                  fileUrl: undefined
+                };
+                setFieldValue('attachments', newAttachments);
+              }
+            };
+
+            return (
+              <Form className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Vendor Name <span className="text-error-500">*</span>
+                    </label>
+                    <Field
+                      as={Input}
+                      name="vendorName"
+                      error={touched.vendorName && errors.vendorName}
+                      fullWidth
+                      required
+                    />
+                  </div>
+
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Company Name <span className="text-error-500">*</span>
+                    </label>
+                    <Field
+                      as="select"
+                      name="companyName"
+                      className={`block w-full rounded-md border ${
+                        touched.companyName && errors.companyName
+                          ? 'border-error-300'
+                          : 'border-gray-300'
+                      } shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 bg-white`}
+                    >
+                      <option value="">Select a company</option>
+                      {COMPANY_OPTIONS.map((company) => (
+                        <option key={company} value={company}>
+                          {company}
+                        </option>
+                      ))}
+                    </Field>
+                    {touched.companyName && errors.companyName && (
+                      <p className="mt-1 text-sm text-error-600">{errors.companyName as string}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Total Outstanding Amount <span className="text-error-500">*</span>
+                    </label>
+                    <Field
+                      as={Input}
+                      name="totalOutstanding"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      error={touched.totalOutstanding && errors.totalOutstanding}
+                      fullWidth
+                      required
+                    />
+                  </div>
+
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Bank Name <span className="text-error-500">*</span>
+                    </label>
+                    <Field
+                      as="select"
+                      name="bankName"
+                      className={`block w-full rounded-md border ${
+                        touched.bankName && errors.bankName
+                          ? 'border-error-300'
+                          : 'border-gray-300'
+                      } shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 bg-white`}
+                    >
+                      <option value="">Select a bank</option>
+                      {BANK_OPTIONS.map((bank) => (
+                        <option key={bank} value={bank}>
+                          {bank}
+                        </option>
+                      ))}
+                    </Field>
+                    {touched.bankName && errors.bankName && (
+                      <p className="mt-1 text-sm text-error-600">{errors.bankName as string}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Pay Against <span className="text-error-500">*</span>
+                    </label>
+                    <Field
+                      as="select"
+                      name="advanceDetails"
+                      className={`block w-full rounded-md border ${
+                        touched.advanceDetails && errors.advanceDetails
+                          ? 'border-error-300'
+                          : 'border-gray-300'
+                      } shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 bg-white`}
+                    >
+                      <option value="tax_invoice">Tax Invoice</option>
+                      <option value="advance_(bill/PI)">Advance (Bill/PI)</option>
+                      <option value="advance">Advance</option>
+                    </Field>
+                    {touched.advanceDetails && errors.advanceDetails && (
+                      <p className="mt-1 text-sm text-error-600">{errors.advanceDetails as string}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Payment Amount <span className="text-error-500">*</span>
+                    </label>
+                    <Field
+                      as={Input}
+                      name="paymentAmount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      error={touched.paymentAmount && errors.paymentAmount}
+                      fullWidth
+                      required
+                    />
+                  </div>
+
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Balance Amount
+                    </label>
+                    <Field
+                      as={Input}
+                      type="number"
+                      value={
+                        !isNaN(Number(values.totalOutstanding)) &&
+                        !isNaN(Number(values.paymentAmount))
+                          ? Math.max(0, (
+                              Number(values.totalOutstanding) -
+                              Number(values.paymentAmount)
+                            )).toFixed(2)
+                          : '0.00'
+                      }
+                      disabled
+                      fullWidth
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Item Description <span className="text-error-500">*</span>
+                    </label>
+                    <Field
+                      as={Input}
+                      name="itemDescription"
+                      error={touched.itemDescription && errors.itemDescription}
+                      fullWidth
+                      required
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Bills <span className="text-error-500">*</span>
+                    </label>
+                    <FieldArray name="bills">
+                      {({ push, remove }) => (
+                        <div className="space-y-4">
+                          {values.bills.map((bill: Bill, index: number) => (
+                            <div key={index} className="space-y-3 bg-gray-50 rounded-lg p-4">
+                              <div className="flex justify-between items-start">
+                                <div className="space-y-3 flex-1">
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Bill Number <span className="text-error-500">*</span>
+                                    </label>
+                                    <Field
+                                      as={Input}
+                                      name={`bills.${index}.billNumber`}
+                                      error={
+                                        touched.bills?.[index]?.billNumber &&
+                                        (errors.bills as FormikErrors<Bill[]>)?.[index]?.billNumber
+                                      }
+                                      fullWidth
+                                      required
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Bill Date <span className="text-error-500">*</span>
+                                    </label>
+                                    <Field
+                                      as={Input}
+                                      name={`bills.${index}.billDate`}
+                                      type="date"
+                                      error={
+                                        touched.bills?.[index]?.billDate &&
+                                        (errors.bills as FormikErrors<Bill[]>)?.[index]?.billDate
+                                      }
+                                      fullWidth
+                                      required
+                                    />
+                                  </div>
+                                </div>
+                                {values.bills.length > 1 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => remove(index)}
+                                    className="ml-4"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => push({ billNumber: '', billDate: format(new Date(), 'yyyy-MM-dd') })}
+                            className="w-full sm:w-auto"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Another Bill
+                          </Button>
+                        </div>
+                      )}
+                    </FieldArray>
+                    {touched.bills && errors.bills && typeof errors.bills === 'string' && (
+                      <p className="mt-1 text-sm text-error-600">{errors.bills}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Attachments
+                    </label>
+                    <FieldArray name="attachments">
+                      {({ push }) => (
+                        <div className="space-y-4">
+                          {values.attachments.map((attachment, index) => (
+                            <div key={index} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                              <div className="flex-1">
+                                {attachment.fileUrl ? (
+                                  <div className="space-y-2">
+                                    <div className="flex items-center space-x-2">
+                                      <File className="h-5 w-5 text-gray-400" />
+                                      <span className="text-sm text-gray-900">{attachment.fileName}</span>
+                                      <span className="text-xs text-gray-500">
+                                        ({Math.round((attachment.fileSize || 0) / 1024)} KB)
+                                      </span>
+                                    </div>
+                                    <div className="text-sm text-gray-500">
+                                      {attachment.description}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    <input
+                                      type="file"
+                                      onChange={(e) => handleFileChange(e, index)}
+                                      accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+                                      className="block w-full text-sm text-gray-500
+                                        file:mr-4 file:py-2 file:px-4
+                                        file:rounded-full file:border-0
+                                        file:text-sm file:font-semibold
+                                        file:bg-primary-50 file:text-primary-700
+                                        hover:file:bg-primary-100"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      Allowed file types: PDF, JPG, JPEG, PNG, GIF, WEBP (Max size: 5MB)
+                                    </p>
+                                    <Field
+                                      as={Input}
+                                      name={`attachments.${index}.description`}
+                                      placeholder="Description"
+                                      className="mt-2"
+                                      error={
+                                        touched.attachments?.[index]?.description &&
+                                        (errors.attachments as FormikErrors<Attachment[]>)?.[index]?.description
+                                      }
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="danger"
+                                size="sm"
+                                onClick={() => handleRemoveAttachment(index)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => push({ description: '', file: undefined })}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Attachment
+                          </Button>
+                        </div>
+                      )}
+                    </FieldArray>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => navigate('/payments')}
+                    className="w-full sm:w-auto"
+                  >
+                    Cancel
+                  </Button>
+
+                  <Button
+                    type="submit"
+                    isLoading={isSubmitting || isUploading}
+                    className="w-full sm:w-auto"
+                  >
+                    {isQueryPayment ? 'Update Payment' : 'Submit Request'}
+                  </Button>
+                </div>
+              </Form>
+            );
+          }}
+        </Formik>
+      </Card>
+    </div>
+  );
+};
+
+export default PaymentRequestForm;
