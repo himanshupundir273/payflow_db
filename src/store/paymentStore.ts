@@ -8,23 +8,39 @@ import { withNetworkCheck } from '../lib/network';
 type PaymentRow = Database['public']['Tables']['payments']['Row'];
 type PaymentInsert = Database['public']['Tables']['payments']['Insert'];
 
+interface DashboardStats {
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  processed: number;
+  queryRaised: number;
+  overdueAdvanceInvoices: number;
+  totalAmount: number;
+  pendingAmount: number;
+}
+
 interface PaymentState {
   payments: PaymentRequest[];
   filteredPayments: PaymentRequest[];
   filterOptions: FilterOptions;
   isLoading: boolean;
+  dashboardStats: DashboardStats | null;
   
   // Actions
   fetchPayments: () => Promise<void>;
+  fetchDashboardStats: () => Promise<void>;
   addPayment: (payment: Omit<PaymentRequest, 'id' | 'serialNumber' | 'status' | 'createdAt' | 'updatedAt' | 'approvedBy'>) => Promise<PaymentRequest | null>;
   approvePayment: (id: string, approver: User) => Promise<void>;
   rejectPayment: (id: string, approver: User) => Promise<void>;
   markAsProcessed: (id: string) => Promise<void>;
+  markInvoiceReceived: (id: string) => Promise<boolean>;
   raiseQuery: (id: string, approver: User, query: string) => Promise<boolean>;
   setFilterOptions: (options: Partial<FilterOptions>) => void;
   applyFilters: () => void;
   exportToExcel: () => void;
   updatePayment: (id: string, paymentData: Partial<PaymentRequest>) => Promise<boolean>;
+  filterOverdueAdvanceInvoices: () => void;
 }
 
 const transformPaymentRow = async (row: PaymentRow): Promise<PaymentRequest> => {
@@ -132,6 +148,7 @@ const transformPaymentRow = async (row: PaymentRow): Promise<PaymentRequest> => 
       lpr: row.lpr || undefined,
       ioa: row.ioa || undefined,
       cpp: row.cpp || undefined,
+      invoiceReceived: row.invoice_received || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -154,6 +171,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     vendor: null,
     company: null,
   },
+  dashboardStats: null,
   
   fetchPayments: async () => {
     set({ isLoading: true });
@@ -260,6 +278,90 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
   },
   
+  fetchDashboardStats: async () => {
+    try {
+      await withNetworkCheck(async () => {
+        // Get the current user's role
+        const { data } = await supabase.auth.getUser();
+        if (!data.user) {
+          console.log('No authenticated user found');
+          return;
+        }
+
+        const authUser = data.user;
+
+        // Get user data to determine role
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', authUser.id)
+          .single();
+
+        if (userError) {
+          console.error('Error fetching user role:', userError);
+          handleSupabaseError(userError);
+          return;
+        }
+
+        // Build query based on user role
+        let baseQuery = supabase.from('payments').select('*');
+        
+        // If user is not admin or accounts, only show their own payments
+        if (userData.role !== 'admin' && userData.role !== 'accounts') {
+          baseQuery = baseQuery.eq('requested_by', authUser.id);
+        }
+
+        const { data: payments, error } = await baseQuery;
+        
+        if (error) {
+          console.error('Error fetching payments for stats:', error);
+          handleSupabaseError(error);
+          return;
+        }
+
+        // Calculate statistics
+        const total = payments.length;
+        const pending = payments.filter(p => p.status === 'pending').length;
+        const approved = payments.filter(p => p.status === 'approved').length;
+        const rejected = payments.filter(p => p.status === 'rejected').length;
+        const processed = payments.filter(p => p.status === 'processed').length;
+        const queryRaised = payments.filter(p => p.status === 'query_raised').length;
+
+        // Calculate overdue advance invoices
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+        const overdueAdvanceInvoices = payments.filter(p => 
+          p.status === 'processed' &&
+          (p.advance_details === 'advance' || p.advance_details === 'advance_(bill/PI)') &&
+          (!p.invoice_received || p.invoice_received === 'no') &&
+          new Date(p.updated_at) < oneWeekAgo
+        ).length;
+
+        const totalAmount = payments.reduce((sum, p) => sum + p.payment_amount, 0);
+        const pendingAmount = payments
+          .filter(p => p.status === 'pending')
+          .reduce((sum, p) => sum + p.payment_amount, 0);
+
+        const stats: DashboardStats = {
+          total,
+          pending,
+          approved,
+          rejected,
+          processed,
+          queryRaised,
+          overdueAdvanceInvoices,
+          totalAmount,
+          pendingAmount,
+        };
+
+        set({ dashboardStats: stats });
+      }, 'Failed to fetch dashboard statistics. Please check your internet connection.');
+    } catch (error) {
+      console.log('Failed to fetch dashboard stats due to network issues');
+    }
+  },
+  
   addPayment: async (paymentData) => {
     set({ isLoading: true });
     
@@ -285,6 +387,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           lpr: paymentData.lpr,
           ioa: paymentData.ioa,
           cpp: paymentData.cpp,
+          invoice_received: paymentData.invoiceReceived,
         };
 
         const { data: payment, error: paymentError } = await supabase
@@ -492,6 +595,50 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     if (!result) {
       set({ isLoading: false });
     }
+  },
+  
+  markInvoiceReceived: async (id: string) => {
+    set({ isLoading: true });
+    
+    const result = await withNetworkCheck(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('payments')
+          .update({ 
+            invoice_received: 'yes'
+          })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) {
+          handleSupabaseError(error);
+          return false;
+        }
+
+        const transformedPayment = await transformPaymentRow(data);
+        
+        set(state => ({
+          payments: state.payments.map(payment => 
+            payment.id === id ? transformedPayment : payment
+          ),
+          isLoading: false
+        }));
+        
+        get().applyFilters();
+        return true;
+      } catch (error) {
+        console.error('Error marking invoice as received:', error);
+        return false;
+      }
+    }, 'Failed to mark invoice as received. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+      return false;
+    }
+
+    return result;
   },
   
   raiseQuery: async (id: string, approver: User, query: string) => {
@@ -759,5 +906,29 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   exportToExcel: () => {
     // Implementation remains the same
     alert('Export to Excel functionality would be implemented here');
+  },
+
+  filterOverdueAdvanceInvoices: () => {
+    set(state => {
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+      const overduePayments = state.payments.filter(payment => 
+        payment.status === 'processed' &&
+        (payment.advanceDetails === 'advance' || payment.advanceDetails === 'advance_(bill/PI)') &&
+        (!payment.invoiceReceived || payment.invoiceReceived === 'no') &&
+        new Date(payment.updatedAt) < oneWeekAgo
+      );
+
+      return {
+        filteredPayments: overduePayments,
+        filterOptions: {
+          status: [],
+          dateRange: { start: null, end: null },
+          vendor: null,
+          company: null,
+        }
+      };
+    });
   }
 }));

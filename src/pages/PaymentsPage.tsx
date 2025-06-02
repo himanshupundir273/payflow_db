@@ -9,19 +9,20 @@ import { Plus, Filter, X } from 'lucide-react';
 
 const PaymentsPage: React.FC = () => {
   const { user } = useAuthStore();
-  const { 
-    payments, 
-    filteredPayments, 
-    isLoading, 
-    approvePayment, 
-    rejectPayment, 
-    markAsProcessed, 
+  const {
+    payments,
+    filteredPayments,
+    isLoading,
+    approvePayment,
+    rejectPayment,
+    markAsProcessed,
+    markInvoiceReceived,
     raiseQuery,
     filterOptions,
-    setFilterOptions
+    setFilterOptions,
   } = usePaymentStore();
   const navigate = useNavigate();
-  
+
   const [showFilters, setShowFilters] = useState(false);
   const [pageTitle, setPageTitle] = useState('Payment Requests');
 
@@ -31,7 +32,7 @@ const PaymentsPage: React.FC = () => {
     { value: 'approved', label: 'Approved' },
     { value: 'rejected', label: 'Rejected' },
     { value: 'processed', label: 'Processed' },
-    { value: 'query_raised', label: 'Query Raised' }
+    { value: 'query_raised', label: 'Query Raised' },
   ];
 
   const handleApprove = async (id: string) => {
@@ -53,6 +54,10 @@ const PaymentsPage: React.FC = () => {
     await raiseQuery(id, user, query);
   };
 
+  const handleMarkInvoiceReceived = async (id: string) => {
+    await markInvoiceReceived(id);
+  };
+
   const handleStatusFilterChange = (status: string) => {
     if (status === 'all') {
       setFilterOptions({ ...filterOptions, status: [] });
@@ -64,13 +69,13 @@ const PaymentsPage: React.FC = () => {
       // Remove the status if it's already selected
       setFilterOptions({
         ...filterOptions,
-        status: currentStatuses.filter(s => s !== status)
+        status: currentStatuses.filter((s) => s !== status),
       });
     } else {
       // Add the status if it's not selected
       setFilterOptions({
         ...filterOptions,
-        status: [...currentStatuses, status]
+        status: [...currentStatuses, status],
       });
     }
   };
@@ -80,7 +85,7 @@ const PaymentsPage: React.FC = () => {
       status: [],
       dateRange: { start: null, end: null },
       vendor: null,
-      company: null
+      company: null,
     });
   };
 
@@ -124,57 +129,62 @@ const PaymentsPage: React.FC = () => {
               <X className="h-5 w-5" />
             </button>
           </div>
-          
+
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-2">Status</label>
+              <label className="text-sm font-medium text-gray-700 block mb-2">
+                Status
+              </label>
               <div className="flex flex-wrap gap-2">
-                {statusOptions.map(option => (
+                {statusOptions.map((option) => (
                   <button
                     key={option.value}
                     onClick={() => handleStatusFilterChange(option.value)}
                     className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      (option.value === 'all' && filterOptions.status.length === 0) ||
-                      (option.value !== 'all' && filterOptions.status.includes(option.value))
+                      (option.value === 'all' &&
+                        filterOptions.status.length === 0) ||
+                      (option.value !== 'all' &&
+                        filterOptions.status.includes(option.value))
                         ? 'bg-primary-100 text-primary-800'
                         : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                     }`}
                   >
                     {option.label}
-                    {option.value !== 'all' && filterOptions.status.includes(option.value) && (
-                      <span className="ml-2">✓</span>
-                    )}
+                    {option.value !== 'all' &&
+                      filterOptions.status.includes(option.value) && (
+                        <span className="ml-2">✓</span>
+                      )}
                   </button>
                 ))}
               </div>
               {filterOptions.status.length > 0 && (
                 <p className="text-sm text-gray-500 mt-2">
-                  Selected: {filterOptions.status.length} status{filterOptions.status.length !== 1 ? 'es' : ''}
+                  Selected: {filterOptions.status.length} status
+                  {filterOptions.status.length !== 1 ? 'es' : ''}
                 </p>
               )}
             </div>
-            
+
             <div className="flex justify-end">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={clearFilters}
-              >
+              <Button size="sm" variant="outline" onClick={clearFilters}>
                 Clear All Filters
               </Button>
             </div>
           </div>
         </Card>
       )}
-      
+
       <PaymentTable
         payments={filteredPayments}
         isLoading={isLoading}
-        showActions={user?.role === 'admin'}
+        showActions={user?.role === 'admin' || user?.role === 'accounts'}
         onApprove={handleApprove}
         onReject={handleReject}
         onProcess={handleProcess}
         onQuery={handleQuery}
+        onMarkInvoiceReceived={
+          user?.role === 'accounts' ? handleMarkInvoiceReceived : undefined
+        }
       />
     </div>
   );

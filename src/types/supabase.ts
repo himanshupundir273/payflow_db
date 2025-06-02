@@ -56,6 +56,7 @@ export interface Database {
           lpr: string | null
           ioa: string | null
           cpp: string | null
+          invoice_received: 'yes' | 'no' | null
           created_at: string
           updated_at: string
         }
@@ -79,6 +80,7 @@ export interface Database {
           lpr?: string | null
           ioa?: string | null
           cpp?: string | null
+          invoice_received?: 'yes' | 'no' | null
           created_at?: string
           updated_at?: string
         }
@@ -102,6 +104,7 @@ export interface Database {
           lpr?: string | null
           ioa?: string | null
           cpp?: string | null
+          invoice_received?: 'yes' | 'no' | null
           created_at?: string
           updated_at?: string
         }

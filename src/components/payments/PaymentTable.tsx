@@ -19,6 +19,7 @@ interface PaymentTableProps {
   onReject?: (id: string) => void;
   onProcess?: (id: string) => void;
   onQuery?: (id: string, query: string) => void;
+  onMarkInvoiceReceived?: (id: string) => void;
 }
 
 const PaymentTable: React.FC<PaymentTableProps> = ({
@@ -29,6 +30,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   onReject,
   onProcess,
   onQuery,
+  onMarkInvoiceReceived,
 }) => {
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -151,6 +153,19 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
 
   const handleQuery = (id: string) => {
     setQueryDialog((prev) => ({ ...prev, paymentId: id }));
+  };
+
+  const handleMarkInvoiceReceived = (id: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Mark Invoice Received',
+      message:
+        'Are you sure you want to mark the invoice as received for this payment?',
+      action: () => {
+        onMarkInvoiceReceived?.(id);
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
   };
 
   const getSortIcon = (field: keyof PaymentRequest) => {
@@ -387,6 +402,24 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                   onClick={() => handleProcess(payment.id)}
                                 >
                                   Process
+                                </Button>
+                              )}
+                            {payment.status === 'processed' &&
+                              (payment.advanceDetails === 'advance' ||
+                                payment.advanceDetails ===
+                                  'advance_(bill/PI)') &&
+                              (!payment.invoiceReceived ||
+                                payment.invoiceReceived === 'no') &&
+                              onMarkInvoiceReceived &&
+                              user?.role === 'accounts' && (
+                                <Button
+                                  size="xs"
+                                  variant="success"
+                                  onClick={() =>
+                                    handleMarkInvoiceReceived(payment.id)
+                                  }
+                                >
+                                  Mark Invoice Received
                                 </Button>
                               )}
                           </div>

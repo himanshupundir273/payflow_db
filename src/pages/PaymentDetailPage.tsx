@@ -36,6 +36,7 @@ const PaymentDetailPage: React.FC = () => {
     markAsProcessed,
     raiseQuery,
     updatePayment,
+    markInvoiceReceived,
   } = usePaymentStore();
   const [isQueryDialogOpen, setIsQueryDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -162,6 +163,19 @@ const PaymentDetailPage: React.FC = () => {
       status: 'pending',
     });
     setIsEditing(false);
+  };
+
+  const handleMarkInvoiceReceived = async () => {
+    if (
+      window.confirm('Are you sure you want to mark this invoice as received?')
+    ) {
+      const success = await markInvoiceReceived(payment.id);
+      if (success) {
+        toast.success('Invoice marked as received successfully');
+      } else {
+        toast.error('Failed to mark invoice as received');
+      }
+    }
   };
 
   const handleEdit = () => {
@@ -669,6 +683,25 @@ const PaymentDetailPage: React.FC = () => {
                   </Button>
                 </div>
               )}
+
+              {/* Mark invoice received for processed advance payments */}
+              {user?.role === 'accounts' &&
+                payment.status === 'processed' &&
+                (payment.advanceDetails === 'advance' ||
+                  payment.advanceDetails === 'advance_(bill/PI)') &&
+                (!payment.invoiceReceived ||
+                  payment.invoiceReceived === 'no') && (
+                  <div className="flex justify-end mt-6">
+                    <Button
+                      variant="success"
+                      icon={<FileCheck className="h-5 w-5" />}
+                      onClick={handleMarkInvoiceReceived}
+                      className="w-full sm:w-auto"
+                    >
+                      Mark Invoice Received
+                    </Button>
+                  </div>
+                )}
             </div>
           </div>
         </Card>

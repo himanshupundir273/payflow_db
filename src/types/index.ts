@@ -50,6 +50,7 @@ export interface PaymentRequest {
   lpr?: string | null;
   ioa?: string | null;
   cpp?: string | null;
+  invoiceReceived?: 'yes' | 'no' | null;
   createdAt: string;
   updatedAt: string;
 }
