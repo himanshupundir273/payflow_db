@@ -7,7 +7,14 @@ import Input from '../ui/Input';
 import Card from '../ui/Card';
 import { format } from 'date-fns';
 import { showSuccessToast, showErrorToast } from '../../lib/toast';
-import { Formik, Form, Field, FieldArray, FormikErrors, FormikTouched } from 'formik';
+import {
+  Formik,
+  Form,
+  Field,
+  FieldArray,
+  FormikErrors,
+  FormikTouched,
+} from 'formik';
 import * as Yup from 'yup';
 import { Plus, X, Upload, File } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -30,13 +37,17 @@ interface Attachment {
 interface FormValues {
   vendorName: string;
   totalOutstanding: string;
-  advanceDetails: 'tax_invoice' | 'proforma_invoice';
+  advanceDetails: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others';
   paymentAmount: string;
   itemDescription: string;
   bills: Bill[];
   attachments: Attachment[];
   companyName: string;
+  companyBranch: string;
   bankName: string;
+  lpr?: string; // Last Purchase Rate (optional)
+  ioa?: string; // Internal Order Accounting (optional)
+  cpp?: string; // Credit Payment Period (optional)
 }
 
 interface PaymentRequestFormProps {
@@ -53,65 +64,82 @@ const COMPANY_OPTIONS = [
   'Satguru',
 ];
 
-const BANK_OPTIONS = [
-  'HDFC Bank',
-  'ICICI Bank',
-];
+const BRANCH_OPTIONS = ['DL', 'MP', 'UK', 'UP'];
+
+const BANK_OPTIONS = ['HDFC Bank', 'ICICI Bank'];
 
 const validationSchema = Yup.object().shape({
   vendorName: Yup.string().required('Vendor name is required'),
-  totalOutstanding: Yup.number()
-    .required('Total outstanding amount is required')
-    .min(0, 'Amount must be zero or positive'),
+  totalOutstanding: Yup.number(),
   advanceDetails: Yup.string()
     .required('Advance details are required')
-    .oneOf(['tax_invoice', 'advance_(bill/PI)', 'advance'], 'Invalid advance details type'),
+    .oneOf(
+      ['tax_invoice', 'advance_(bill/PI)', 'advance', 'others'],
+      'Invalid advance details type'
+    ),
   paymentAmount: Yup.number()
     .required('Payment amount is required')
-    .min(0, 'Amount must be zero or positive')
-    .test('payment-amount', 'Payment amount cannot exceed total outstanding', function(value) {
-      const totalOutstanding = this.parent.totalOutstanding;
-      return !value || !totalOutstanding || value <= totalOutstanding;
-    }),
+    .min(0, 'Amount must be zero or positive'),
+  // .test(
+  //   'payment-amount',
+  //   'Payment amount cannot exceed total outstanding',
+  //   function (value) {
+  //     const totalOutstanding = this.parent.totalOutstanding;
+  //     return !value || !totalOutstanding || value <= totalOutstanding;
+  //   }
+  // ),
   itemDescription: Yup.string().required('Item description is required'),
-  bills: Yup.array().of(
-    Yup.object().shape({
-      billNumber: Yup.string().required('Bill number is required'),
-      billDate: Yup.date().required('Bill date is required'),
-    })
-  ).min(1, 'At least one bill is required'),
-  attachments: Yup.array().of(
-    Yup.object().shape({
-      description: Yup.string().required('Description is required'),
-      file: Yup.mixed<File>()
-        .test('fileSize', 'File size must be less than 5MB', (value) => {
-          if (!value) return true;
-          return (value as File).size <= 5 * 1024 * 1024;
-        })
-        .test('fileType', 'Only PDF and image files are allowed', (value) => {
-          if (!value) return true;
-          const file = value as File;
-          const validTypes = [
-            'application/pdf',
-            'image/jpeg',
-            'image/jpg',
-            'image/png',
-            'image/gif',
-            'image/webp'
-          ];
-          return validTypes.includes(file.type);
-        })
-    })
-  ).optional(),
+  bills: Yup.array()
+    .of(
+      Yup.object().shape({
+        billNumber: Yup.string().required('Bill number is required'),
+        billDate: Yup.date().required('Bill date is required'),
+      })
+    )
+    .min(1, 'At least one bill is required'),
+  attachments: Yup.array()
+    .of(
+      Yup.object().shape({
+        description: Yup.string().required('Description is required'),
+        file: Yup.mixed<File>()
+          .test('fileSize', 'File size must be less than 5MB', (value) => {
+            if (!value) return true;
+            return (value as File).size <= 5 * 1024 * 1024;
+          })
+          .test('fileType', 'Only PDF and image files are allowed', (value) => {
+            if (!value) return true;
+            const file = value as File;
+            const validTypes = [
+              'application/pdf',
+              'image/jpeg',
+              'image/jpg',
+              'image/png',
+              'image/gif',
+              'image/webp',
+            ];
+            return validTypes.includes(file.type);
+          }),
+      })
+    )
+    .optional(),
   companyName: Yup.string()
     .required('Company name is required')
     .oneOf(COMPANY_OPTIONS, 'Please select a valid company'),
+  companyBranch: Yup.string()
+    .required('Company branch is required')
+    .oneOf(BRANCH_OPTIONS, 'Please select a valid branch'),
   bankName: Yup.string()
     .required('Bank name is required')
     .oneOf(BANK_OPTIONS, 'Please select a valid bank'),
+  // Optional fields - no validation required
+  lpr: Yup.string().optional().nullable(),
+  ioa: Yup.string().optional().nullable(),
+  cpp: Yup.string().optional().nullable(),
 });
 
-const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentId }) => {
+const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
+  editingPaymentId,
+}) => {
   const { user } = useAuthStore();
   const { addPayment, updatePayment } = usePaymentStore();
   const navigate = useNavigate();
@@ -135,14 +163,14 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
           .select('status')
           .eq('id', editingPaymentId)
           .single();
-        
+
         setIsQueryPayment(payment?.status === 'query_raised');
       };
       checkPaymentStatus();
     }
   }, [editingPaymentId]);
 
-  const initialValues: FormValues = editingPaymentData 
+  const initialValues: FormValues = editingPaymentData
     ? JSON.parse(editingPaymentData)
     : {
         vendorName: '',
@@ -153,10 +181,17 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
         bills: [{ billNumber: '', billDate: format(new Date(), 'yyyy-MM-dd') }],
         attachments: [],
         companyName: '',
+        companyBranch: '',
         bankName: '',
+        lpr: '',
+        ioa: '',
+        cpp: '',
       };
 
-  const handleSubmit = async (values: FormValues, { setSubmitting }: { setSubmitting: (isSubmitting: boolean) => void }) => {
+  const handleSubmit = async (
+    values: FormValues,
+    { setSubmitting }: { setSubmitting: (isSubmitting: boolean) => void }
+  ) => {
     try {
       if (!user) {
         throw new Error('User not authenticated');
@@ -168,9 +203,9 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
       const paymentAmount = Number(values.paymentAmount);
       const balanceAmount = totalOutstanding - paymentAmount;
 
-      if (balanceAmount < 0) {
-        throw new Error('Balance amount cannot be negative');
-      }
+      // if (balanceAmount < 0) {
+      //   throw new Error('Balance amount cannot be negative');
+      // }
 
       const paymentData = {
         vendorName: values.vendorName,
@@ -179,14 +214,14 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
         paymentAmount,
         balanceAmount,
         itemDescription: values.itemDescription,
-        bills: values.bills.map(bill => ({
+        bills: values.bills.map((bill) => ({
           id: '',
           billNumber: bill.billNumber,
           billDate: new Date(bill.billDate).toISOString(),
           createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         })),
-        attachments: values.attachments.map(attachment => ({
+        attachments: values.attachments.map((attachment) => ({
           id: attachment.id || '',
           description: attachment.description,
           file: attachment.file,
@@ -195,10 +230,14 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
           fileType: attachment.fileType || '',
           fileSize: attachment.fileSize || 0,
           createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
         })),
         companyName: values.companyName,
-        bankName: values.bankName
+        companyBranch: values.companyBranch,
+        bankName: values.bankName,
+        lpr: values.lpr || null,
+        ioa: values.ioa || null,
+        cpp: values.cpp || null,
       };
 
       if (editingPaymentId) {
@@ -212,13 +251,17 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
         await addPayment({
           ...paymentData,
           date: new Date().toISOString(),
-          requestedBy: user
+          requestedBy: user,
         });
         showSuccessToast('Payment request submitted');
         navigate('/payments');
       }
     } catch (error) {
-      showErrorToast(editingPaymentId ? 'Failed to update payment' : 'Failed to submit payment request');
+      showErrorToast(
+        editingPaymentId
+          ? 'Failed to update payment'
+          : 'Failed to submit payment request'
+      );
       console.error('Error submitting payment request:', error);
     } finally {
       setSubmitting(false);
@@ -228,7 +271,9 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
 
   return (
     <div className="max-w-2xl mx-auto my-8 animate-fade-in">
-      <Card title={isQueryPayment ? "Update Payment" : "Submit Payment Request"}>
+      <Card
+        title={isQueryPayment ? 'Update Payment' : 'Submit Payment Request'}
+      >
         <Formik
           initialValues={initialValues}
           validationSchema={validationSchema}
@@ -237,29 +282,37 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
           {({ errors, touched, isSubmitting, values, setFieldValue }) => {
             const handleRemoveAttachment = async (index: number) => {
               const attachment = values.attachments[index];
-              
+
               // If this is an existing attachment (has an ID), we need to delete it from storage and database
               if (attachment.id && attachment.fileUrl) {
                 try {
                   // Delete from storage
-                  await supabase.storage.from('attachments').remove([attachment.fileUrl]);
-                  
+                  await supabase.storage
+                    .from('attachments')
+                    .remove([attachment.fileUrl]);
+
                   // Delete from database
-                  await supabase.from('attachments').delete().eq('id', attachment.id);
+                  await supabase
+                    .from('attachments')
+                    .delete()
+                    .eq('id', attachment.id);
                 } catch (error) {
                   console.error('Error deleting attachment:', error);
                   showErrorToast('Failed to delete attachment');
                   return;
                 }
               }
-              
+
               // Remove from form state
               const newAttachments = [...values.attachments];
               newAttachments.splice(index, 1);
               setFieldValue('attachments', newAttachments);
             };
 
-            const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, index: number) => {
+            const handleFileChange = (
+              event: React.ChangeEvent<HTMLInputElement>,
+              index: number
+            ) => {
               const file = event.target.files?.[0];
               if (file) {
                 // Check file size immediately
@@ -276,7 +329,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                   fileName: file.name,
                   fileType: file.type,
                   fileSize: file.size,
-                  fileUrl: undefined
+                  fileUrl: undefined,
                 };
                 setFieldValue('attachments', newAttachments);
               }
@@ -319,13 +372,40 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                       ))}
                     </Field>
                     {touched.companyName && errors.companyName && (
-                      <p className="mt-1 text-sm text-error-600">{errors.companyName as string}</p>
+                      <p className="mt-1 text-sm text-error-600">
+                        {errors.companyName as string}
+                      </p>
                     )}
                   </div>
-
                   <div className="flex flex-col">
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Total Outstanding Amount <span className="text-error-500">*</span>
+                      Company Branch <span className="text-error-500">*</span>
+                    </label>
+                    <Field
+                      as="select"
+                      name="companyBranch"
+                      className={`block w-full rounded-md border ${
+                        touched.companyBranch && errors.companyBranch
+                          ? 'border-error-300'
+                          : 'border-gray-300'
+                      } shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 bg-white`}
+                    >
+                      <option value="">Select Branch</option>
+                      {BRANCH_OPTIONS.map((branch) => (
+                        <option key={branch} value={branch}>
+                          {branch}
+                        </option>
+                      ))}
+                    </Field>
+                    {touched.companyBranch && errors.companyBranch && (
+                      <p className="mt-1 text-sm text-error-600">
+                        {errors.companyBranch as string}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Total Outstanding Amount
                     </label>
                     <Field
                       as={Input}
@@ -333,9 +413,10 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                       type="number"
                       min="0"
                       step="0.01"
-                      error={touched.totalOutstanding && errors.totalOutstanding}
+                      error={
+                        touched.totalOutstanding && errors.totalOutstanding
+                      }
                       fullWidth
-                      required
                     />
                   </div>
 
@@ -360,7 +441,9 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                       ))}
                     </Field>
                     {touched.bankName && errors.bankName && (
-                      <p className="mt-1 text-sm text-error-600">{errors.bankName as string}</p>
+                      <p className="mt-1 text-sm text-error-600">
+                        {errors.bankName as string}
+                      </p>
                     )}
                   </div>
 
@@ -378,11 +461,16 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                       } shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 bg-white`}
                     >
                       <option value="tax_invoice">Tax Invoice</option>
-                      <option value="advance_(bill/PI)">Advance (Bill/PI)</option>
+                      <option value="advance_(bill/PI)">
+                        Advance (Bill/PI)
+                      </option>
                       <option value="advance">Advance</option>
+                      <option value="others">Others</option>
                     </Field>
                     {touched.advanceDetails && errors.advanceDetails && (
-                      <p className="mt-1 text-sm text-error-600">{errors.advanceDetails as string}</p>
+                      <p className="mt-1 text-sm text-error-600">
+                        {errors.advanceDetails as string}
+                      </p>
                     )}
                   </div>
 
@@ -409,15 +497,20 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                     <Field
                       as={Input}
                       type="number"
-                      value={
-                        !isNaN(Number(values.totalOutstanding)) &&
-                        !isNaN(Number(values.paymentAmount))
-                          ? Math.max(0, (
-                              Number(values.totalOutstanding) -
-                              Number(values.paymentAmount)
-                            )).toFixed(2)
-                          : '0.00'
-                      }
+                      // value={
+                      //   !isNaN(Number(values.totalOutstanding)) &&
+                      //   !isNaN(Number(values.paymentAmount))
+                      //     ? Math.max(
+                      //         0,
+                      //         Number(values.totalOutstanding) -
+                      //           Number(values.paymentAmount)
+                      //       ).toFixed(2)
+                      //     : '0.00'
+                      // }
+                      value={(
+                        Number(values.totalOutstanding) -
+                        Number(values.paymentAmount)
+                      ).toFixed(2)}
                       disabled
                       fullWidth
                     />
@@ -436,6 +529,51 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                     />
                   </div>
 
+                  {/* New optional fields */}
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      LPR (Last Purchase Rate)
+                    </label>
+                    <Field
+                      as={Input}
+                      name="lpr"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Enter last purchase rate"
+                      error={touched.lpr && errors.lpr}
+                      fullWidth
+                    />
+                  </div>
+
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      IOA (Internal Order Accounting)
+                    </label>
+                    <Field
+                      as={Input}
+                      name="ioa"
+                      placeholder="Enter internal order accounting"
+                      error={touched.ioa && errors.ioa}
+                      fullWidth
+                    />
+                  </div>
+
+                  <div className="flex flex-col">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      CPP (Credit Payment Period)
+                    </label>
+                    <Field
+                      as={Input}
+                      name="cpp"
+                      type="number"
+                      min="0"
+                      placeholder="Enter credit payment period (days)"
+                      error={touched.cpp && errors.cpp}
+                      fullWidth
+                    />
+                  </div>
+
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Bills <span className="text-error-500">*</span>
@@ -444,19 +582,25 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                       {({ push, remove }) => (
                         <div className="space-y-4">
                           {values.bills.map((bill: Bill, index: number) => (
-                            <div key={index} className="space-y-3 bg-gray-50 rounded-lg p-4">
+                            <div
+                              key={index}
+                              className="space-y-3 bg-gray-50 rounded-lg p-4"
+                            >
                               <div className="flex justify-between items-start">
                                 <div className="space-y-3 flex-1">
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                      Bill Number <span className="text-error-500">*</span>
+                                      Bill Number{' '}
+                                      <span className="text-error-500">*</span>
                                     </label>
                                     <Field
                                       as={Input}
                                       name={`bills.${index}.billNumber`}
                                       error={
                                         touched.bills?.[index]?.billNumber &&
-                                        (errors.bills as FormikErrors<Bill[]>)?.[index]?.billNumber
+                                        (
+                                          errors.bills as FormikErrors<Bill[]>
+                                        )?.[index]?.billNumber
                                       }
                                       fullWidth
                                       required
@@ -464,7 +608,8 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                                   </div>
                                   <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                                      Bill Date <span className="text-error-500">*</span>
+                                      Bill Date{' '}
+                                      <span className="text-error-500">*</span>
                                     </label>
                                     <Field
                                       as={Input}
@@ -472,7 +617,9 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                                       type="date"
                                       error={
                                         touched.bills?.[index]?.billDate &&
-                                        (errors.bills as FormikErrors<Bill[]>)?.[index]?.billDate
+                                        (
+                                          errors.bills as FormikErrors<Bill[]>
+                                        )?.[index]?.billDate
                                       }
                                       fullWidth
                                       required
@@ -497,7 +644,12 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => push({ billNumber: '', billDate: format(new Date(), 'yyyy-MM-dd') })}
+                            onClick={() =>
+                              push({
+                                billNumber: '',
+                                billDate: format(new Date(), 'yyyy-MM-dd'),
+                              })
+                            }
                             className="w-full sm:w-auto"
                           >
                             <Plus className="h-4 w-4 mr-2" />
@@ -506,9 +658,13 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                         </div>
                       )}
                     </FieldArray>
-                    {touched.bills && errors.bills && typeof errors.bills === 'string' && (
-                      <p className="mt-1 text-sm text-error-600">{errors.bills}</p>
-                    )}
+                    {touched.bills &&
+                      errors.bills &&
+                      typeof errors.bills === 'string' && (
+                        <p className="mt-1 text-sm text-error-600">
+                          {errors.bills}
+                        </p>
+                      )}
                   </div>
 
                   <div className="space-y-4">
@@ -519,15 +675,24 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                       {({ push }) => (
                         <div className="space-y-4">
                           {values.attachments.map((attachment, index) => (
-                            <div key={index} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                            <div
+                              key={index}
+                              className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg"
+                            >
                               <div className="flex-1">
                                 {attachment.fileUrl ? (
                                   <div className="space-y-2">
                                     <div className="flex items-center space-x-2">
                                       <File className="h-5 w-5 text-gray-400" />
-                                      <span className="text-sm text-gray-900">{attachment.fileName}</span>
+                                      <span className="text-sm text-gray-900">
+                                        {attachment.fileName}
+                                      </span>
                                       <span className="text-xs text-gray-500">
-                                        ({Math.round((attachment.fileSize || 0) / 1024)} KB)
+                                        (
+                                        {Math.round(
+                                          (attachment.fileSize || 0) / 1024
+                                        )}{' '}
+                                        KB)
                                       </span>
                                     </div>
                                     <div className="text-sm text-gray-500">
@@ -538,7 +703,9 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                                   <div className="space-y-2">
                                     <input
                                       type="file"
-                                      onChange={(e) => handleFileChange(e, index)}
+                                      onChange={(e) =>
+                                        handleFileChange(e, index)
+                                      }
                                       accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
                                       className="block w-full text-sm text-gray-500
                                         file:mr-4 file:py-2 file:px-4
@@ -548,7 +715,8 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                                         hover:file:bg-primary-100"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
-                                      Allowed file types: PDF, JPG, JPEG, PNG, GIF, WEBP (Max size: 5MB)
+                                      Allowed file types: PDF, JPG, JPEG, PNG,
+                                      GIF, WEBP (Max size: 5MB)
                                     </p>
                                     <Field
                                       as={Input}
@@ -556,8 +724,13 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                                       placeholder="Description"
                                       className="mt-2"
                                       error={
-                                        touched.attachments?.[index]?.description &&
-                                        (errors.attachments as FormikErrors<Attachment[]>)?.[index]?.description
+                                        touched.attachments?.[index]
+                                          ?.description &&
+                                        (
+                                          errors.attachments as FormikErrors<
+                                            Attachment[]
+                                          >
+                                        )?.[index]?.description
                                       }
                                     />
                                   </div>
@@ -576,7 +749,9 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={() => push({ description: '', file: undefined })}
+                            onClick={() =>
+                              push({ description: '', file: undefined })
+                            }
                           >
                             <Plus className="h-4 w-4 mr-2" />
                             Add Attachment

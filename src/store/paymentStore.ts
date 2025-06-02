@@ -16,7 +16,7 @@ interface PaymentState {
   
   // Actions
   fetchPayments: () => Promise<void>;
-  addPayment: (payment: Omit<PaymentRequest, 'id' | 'serialNumber' | 'status' | 'createdAt' | 'updatedAt' | 'approvedBy'>) => Promise<PaymentRequest>;
+  addPayment: (payment: Omit<PaymentRequest, 'id' | 'serialNumber' | 'status' | 'createdAt' | 'updatedAt' | 'approvedBy'>) => Promise<PaymentRequest | null>;
   approvePayment: (id: string, approver: User) => Promise<void>;
   rejectPayment: (id: string, approver: User) => Promise<void>;
   markAsProcessed: (id: string) => Promise<void>;
@@ -101,7 +101,7 @@ const transformPaymentRow = async (row: PaymentRow): Promise<PaymentRequest> => 
       date: row.date,
       vendorName: row.vendor_name,
       totalOutstanding: row.total_outstanding,
-      advanceDetails: row.advance_details as 'tax_invoice' | 'proforma_invoice',
+      advanceDetails: row.advance_details as 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others',
       paymentAmount: row.payment_amount,
       balanceAmount: row.balance_amount,
       itemDescription: row.item_description,
@@ -125,9 +125,13 @@ const transformPaymentRow = async (row: PaymentRow): Promise<PaymentRequest> => 
       requestedBy: requestedByUser,
       approvedBy: approvedByUser,
       companyName: row.company_name,
+      companyBranch: row.company_branch,
       bankName: row.bank_name,
       status: row.status,
       queryDetails: row.query_details || undefined,
+      lpr: row.lpr || undefined,
+      ioa: row.ioa || undefined,
+      cpp: row.cpp || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -275,8 +279,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           item_description: paymentData.itemDescription,
           requested_by: user.id,
           company_name: paymentData.companyName,
+          company_branch: paymentData.companyBranch,
           bank_name: paymentData.bankName,
           status: 'pending',
+          lpr: paymentData.lpr,
+          ioa: paymentData.ioa,
+          cpp: paymentData.cpp,
         };
 
         const { data: payment, error: paymentError } = await supabase
@@ -557,8 +565,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             balance_amount: paymentData.balanceAmount,
             item_description: paymentData.itemDescription,
             company_name: paymentData.companyName,
+            company_branch: paymentData.companyBranch,
             bank_name: paymentData.bankName,
             status: existingPayment.status === 'query_raised' ? 'pending' : existingPayment.status,
+            lpr: paymentData.lpr,
+            ioa: paymentData.ioa,
+            cpp: paymentData.cpp,
             updated_at: new Date().toISOString()
           })
           .eq('id', id);

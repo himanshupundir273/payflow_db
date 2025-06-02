@@ -42,16 +42,20 @@ export interface Database {
           date: string
           vendor_name: string
           total_outstanding: number
-          advance_details: 'tax_invoice' | 'proforma_invoice'
+          advance_details: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others'
           payment_amount: number
           balance_amount: number
           item_description: string
           requested_by: string
           approved_by: string | null
           company_name: string
+          company_branch: string
           bank_name: string
           status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details: string | null
+          lpr: string | null
+          ioa: string | null
+          cpp: string | null
           created_at: string
           updated_at: string
         }
@@ -61,16 +65,20 @@ export interface Database {
           date: string
           vendor_name: string
           total_outstanding: number
-          advance_details: 'tax_invoice' | 'proforma_invoice'
+          advance_details: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others'
           payment_amount: number
           balance_amount: number
           item_description: string
           requested_by: string
           approved_by?: string | null
           company_name: string
+          company_branch: string
           bank_name: string
           status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details?: string | null
+          lpr?: string | null
+          ioa?: string | null
+          cpp?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -80,16 +88,20 @@ export interface Database {
           date?: string
           vendor_name?: string
           total_outstanding?: number
-          advance_details?: 'tax_invoice' | 'proforma_invoice'
+          advance_details?: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others'
           payment_amount?: number
           balance_amount?: number
           item_description?: string
           requested_by?: string
           approved_by?: string | null
           company_name?: string
+          company_branch?: string
           bank_name?: string
           status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details?: string | null
+          lpr?: string | null
+          ioa?: string | null
+          cpp?: string | null
           created_at?: string
           updated_at?: string
         }

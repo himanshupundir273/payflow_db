@@ -34,7 +34,7 @@ export interface PaymentRequest {
   date: string;
   vendorName: string;
   totalOutstanding: number;
-  advanceDetails: 'tax_invoice' | 'proforma_invoice';
+  advanceDetails: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others';
   paymentAmount: number;
   balanceAmount: number;
   itemDescription: string;
@@ -43,9 +43,13 @@ export interface PaymentRequest {
   requestedBy: User;
   approvedBy: User | null;
   companyName: string;
+  companyBranch: string;
   bankName: string;
   status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised';
   queryDetails?: string;
+  lpr?: string | null;
+  ioa?: string | null;
+  cpp?: string | null;
   createdAt: string;
   updatedAt: string;
 }
