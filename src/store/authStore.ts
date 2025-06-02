@@ -44,6 +44,10 @@ export const useAuthStore = create<AuthState>((set) => ({
             user: userData,
             isAuthenticated: true 
           });
+          
+          // Don't fetch payments during initialization - they will be fetched
+          // when the dashboard loads or user navigates to a page that needs them
+          // This prevents duplicate API calls on app startup
         }
       } catch (error) {
         console.error('Auth initialization error:', error);

@@ -43,49 +43,104 @@ interface PaymentState {
   filterOverdueAdvanceInvoices: () => void;
 }
 
-const transformPaymentRow = async (row: PaymentRow): Promise<PaymentRequest> => {
+// Cache for users to avoid repeated fetches
+const usersCache = new Map<string, any>();
+
+// Global flag to prevent concurrent fetch calls
+let isFetching = false;
+
+// Helper function to calculate dashboard stats from raw payment data
+const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
+  const total = payments.length;
+  const pending = payments.filter(p => p.status === 'pending').length;
+  const approved = payments.filter(p => p.status === 'approved').length;
+  const rejected = payments.filter(p => p.status === 'rejected').length;
+  const processed = payments.filter(p => p.status === 'processed').length;
+  const queryRaised = payments.filter(p => p.status === 'query_raised').length;
+
+  // Calculate overdue advance invoices
+  const oneWeekAgo = new Date();
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+  const overdueAdvanceInvoices = payments.filter(p => 
+    p.status === 'processed' &&
+    (p.advance_details === 'advance' || p.advance_details === 'advance_(bill/PI)') &&
+    (!p.invoice_received || p.invoice_received === 'no') &&
+    new Date(p.updated_at) < oneWeekAgo
+  ).length;
+
+  const totalAmount = payments.reduce((sum, p) => sum + p.payment_amount, 0);
+  const pendingAmount = payments
+    .filter(p => p.status === 'pending')
+    .reduce((sum, p) => sum + p.payment_amount, 0);
+
+  return {
+    total,
+    pending,
+    approved,
+    rejected,
+    processed,
+    queryRaised,
+    overdueAdvanceInvoices,
+    totalAmount,
+    pendingAmount,
+  };
+};
+
+// Helper function to transform a single payment (for operations that update individual payments)
+const transformSinglePayment = async (row: PaymentRow): Promise<PaymentRequest> => {
   try {
     // Fetch the requestedBy user
     let requestedByUser;
-    const { data: userData, error: requestedByError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', row.requested_by)
-      .single();
-
-    if (requestedByError) {
-      console.error('Error fetching requestedBy user:', requestedByError);
-      requestedByUser = {
-        id: row.requested_by,
-        email: 'unknown@example.com',
-        name: 'Unknown User',
-        role: 'user',
-        company: 'Unknown Company'
-      };
+    if (usersCache.has(row.requested_by)) {
+      requestedByUser = usersCache.get(row.requested_by);
     } else {
-      requestedByUser = userData;
-    }
-
-    // Fetch the approvedBy user if it exists
-    let approvedByUser = null;
-    if (row.approved_by) {
-      const { data: approvedBy, error: approvedByError } = await supabase
+      const { data: userData, error: requestedByError } = await supabase
         .from('users')
         .select('*')
-        .eq('id', row.approved_by)
+        .eq('id', row.requested_by)
         .single();
 
-      if (approvedByError) {
-        console.error('Error fetching approvedBy user:', approvedByError);
-        approvedByUser = {
-          id: row.approved_by,
+      if (requestedByError) {
+        console.error('Error fetching requestedBy user:', requestedByError);
+        requestedByUser = {
+          id: row.requested_by,
           email: 'unknown@example.com',
           name: 'Unknown User',
           role: 'user',
           company: 'Unknown Company'
         };
       } else {
-        approvedByUser = approvedBy;
+        requestedByUser = userData;
+        usersCache.set(row.requested_by, userData);
+      }
+    }
+
+    // Fetch the approvedBy user if it exists
+    let approvedByUser = null;
+    if (row.approved_by) {
+      if (usersCache.has(row.approved_by)) {
+        approvedByUser = usersCache.get(row.approved_by);
+      } else {
+        const { data: approvedBy, error: approvedByError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', row.approved_by)
+          .single();
+
+        if (approvedByError) {
+          console.error('Error fetching approvedBy user:', approvedByError);
+          approvedByUser = {
+            id: row.approved_by,
+            email: 'unknown@example.com',
+            name: 'Unknown User',
+            role: 'user',
+            company: 'Unknown Company'
+          };
+        } else {
+          approvedByUser = approvedBy;
+          usersCache.set(row.approved_by, approvedBy);
+        }
       }
     }
 
@@ -153,9 +208,88 @@ const transformPaymentRow = async (row: PaymentRow): Promise<PaymentRequest> => 
       updatedAt: row.updated_at
     };
   } catch (error) {
-    console.error('Error in transformPaymentRow:', error);
+    console.error('Error in transformSinglePayment:', error);
     throw error;
   }
+};
+
+// Optimized function to transform payment data with batched user fetching
+const transformPaymentsWithBatchedData = async (
+  rows: PaymentRow[],
+  usersMap: Map<string, any>,
+  billsMap: Map<string, any[]>,
+  attachmentsMap: Map<string, any[]>
+): Promise<PaymentRequest[]> => {
+  return rows.map(row => {
+    // Get requestedBy user from cache
+    const requestedByUser = usersMap.get(row.requested_by) || {
+      id: row.requested_by,
+      email: 'unknown@example.com',
+      name: 'Unknown User',
+      role: 'user',
+      company: 'Unknown Company'
+    };
+
+    // Get approvedBy user from cache if exists
+    let approvedByUser = null;
+    if (row.approved_by) {
+      approvedByUser = usersMap.get(row.approved_by) || {
+        id: row.approved_by,
+        email: 'unknown@example.com',
+        name: 'Unknown User',
+        role: 'user',
+        company: 'Unknown Company'
+      };
+    }
+
+    // Get bills from cache
+    const bills = billsMap.get(row.id) || [];
+
+    // Get attachments from cache
+    const attachments = attachmentsMap.get(row.id) || [];
+
+    return {
+      id: row.id,
+      serialNumber: row.serial_number,
+      date: row.date,
+      vendorName: row.vendor_name,
+      totalOutstanding: row.total_outstanding,
+      advanceDetails: row.advance_details as 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others',
+      paymentAmount: row.payment_amount,
+      balanceAmount: row.balance_amount,
+      itemDescription: row.item_description,
+      bills: bills.map(bill => ({
+        id: bill.id,
+        billNumber: bill.bill_number,
+        billDate: bill.bill_date,
+        createdAt: bill.created_at,
+        updatedAt: bill.updated_at
+      })),
+      attachments: attachments.map(attachment => ({
+        id: attachment.id,
+        description: attachment.description,
+        fileUrl: attachment.file_url,
+        fileName: attachment.file_name,
+        fileType: attachment.file_type,
+        fileSize: attachment.file_size,
+        createdAt: attachment.created_at,
+        updatedAt: attachment.updated_at
+      })),
+      requestedBy: requestedByUser,
+      approvedBy: approvedByUser,
+      companyName: row.company_name,
+      companyBranch: row.company_branch,
+      bankName: row.bank_name,
+      status: row.status,
+      queryDetails: row.query_details || undefined,
+      lpr: row.lpr || undefined,
+      ioa: row.ioa || undefined,
+      cpp: row.cpp || undefined,
+      invoiceReceived: row.invoice_received || undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  });
 };
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
@@ -174,192 +308,238 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   dashboardStats: null,
   
   fetchPayments: async () => {
+    // Prevent concurrent calls
+    if (isFetching) {
+      console.log('fetchPayments already in progress, skipping duplicate call');
+      return;
+    }
+    
+    isFetching = true;
     set({ isLoading: true });
     
-    const result = await withNetworkCheck(async () => {
-      try {
-        // Get the current user's role
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (!authUser) {
-          console.log('No authenticated user found');
-          return;
-        }
-
-        // First check if user exists in users table
-        const { data: existingUser, error: checkError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', authUser.id)
-          .single();
-
-        if (checkError) {
-          console.log('User not found in users table, creating new user');
-          // If user doesn't exist, create them with default role
-          const { data: newUser, error: createError } = await supabase
-            .from('users')
-            .insert([
-              {
-                id: authUser.id,
-                email: authUser.email || 'unknown@example.com',
-                name: authUser.email?.split('@')[0] || 'User',
-                role: 'user',
-                company: 'Default Company'
-              }
-            ])
-            .select()
-            .single();
-
-          if (createError) {
-            console.error('Error creating user:', createError);
-            handleSupabaseError(createError);
+    try {
+      const result = await withNetworkCheck(async () => {
+        try {
+          // Get the current user's role
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          if (!authUser) {
+            console.log('No authenticated user found');
             return;
           }
-        }
 
-        // Now fetch the user's role
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', authUser.id)
-          .single();
+          // First check if user exists in users table
+          const { data: existingUser, error: checkError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', authUser.id)
+            .single();
 
-        if (userError) {
-          console.error('Error fetching user role:', userError);
-          handleSupabaseError(userError);
-          return;
-        }
+          if (checkError) {
+            console.log('User not found in users table, creating new user');
+            // If user doesn't exist, create them with default role
+            const { data: newUser, error: createError } = await supabase
+              .from('users')
+              .insert([
+                {
+                  id: authUser.id,
+                  email: authUser.email || 'unknown@example.com',
+                  name: authUser.email?.split('@')[0] || 'User',
+                  role: 'user',
+                  company: 'Default Company'
+                }
+              ])
+              .select()
+              .single();
 
-        // Build the query based on user role
-        let query = supabase
-          .from('payments')
-          .select('*');
-
-        // If user is not admin or accounts, only show their own payments
-        if (userData.role !== 'admin' && userData.role !== 'accounts') {
-          query = query.eq('requested_by', authUser.id);
-        }
-
-        const { data: rows, error } = await query
-          .order('created_at', { ascending: false });
-
-        if (error) {
-          console.error('Error fetching payments:', error);
-          handleSupabaseError(error);
-          return;
-        }
-
-        const payments = await Promise.all(rows.map(async (row) => {
-          try {
-            return await transformPaymentRow(row);
-          } catch (error) {
-            console.error('Error transforming payment row:', error);
-            return null;
+            if (createError) {
+              console.error('Error creating user:', createError);
+              handleSupabaseError(createError);
+              return;
+            }
           }
-        }));
 
-        // Filter out any null values from failed transformations
-        const validPayments = payments.filter((payment): payment is PaymentRequest => payment !== null);
-        
-        set({ 
-          payments: validPayments,
-          filteredPayments: validPayments,
-          isLoading: false 
-        });
-        
-        get().applyFilters();
-      } catch (error) {
-        console.error('Error in fetchPayments:', error);
-        throw error;
+          // Now fetch the user's role
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', authUser.id)
+            .single();
+
+          if (userError) {
+            console.error('Error fetching user role:', userError);
+            handleSupabaseError(userError);
+            return;
+          }
+
+          // Build the query based on user role
+          let query = supabase
+            .from('payments')
+            .select('*');
+
+          // If user is not admin or accounts, only show their own payments
+          if (userData.role !== 'admin' && userData.role !== 'accounts') {
+            query = query.eq('requested_by', authUser.id);
+          }
+
+          const { data: rows, error } = await query
+            .order('created_at', { ascending: false });
+
+          if (error) {
+            console.error('Error fetching payments:', error);
+            handleSupabaseError(error);
+            return;
+          }
+
+          if (!rows || rows.length === 0) {
+            set({ 
+              payments: [],
+              filteredPayments: [],
+              isLoading: false,
+              dashboardStats: calculateDashboardStats([])
+            });
+            return;
+          }
+
+          // Extract all unique user IDs to fetch in batch
+          const userIds = new Set<string>();
+          rows.forEach(row => {
+            userIds.add(row.requested_by);
+            if (row.approved_by) {
+              userIds.add(row.approved_by);
+            }
+          });
+
+          // Batch fetch all users
+          const uncachedUserIds = Array.from(userIds).filter(id => !usersCache.has(id));
+          
+          if (uncachedUserIds.length > 0) {
+            const { data: users, error: usersError } = await supabase
+              .from('users')
+              .select('*')
+              .in('id', uncachedUserIds);
+
+            if (usersError) {
+              console.error('Error fetching users:', usersError);
+            } else {
+              // Cache the fetched users
+              users?.forEach(user => {
+                usersCache.set(user.id, user);
+              });
+            }
+          }
+
+          // Create users map for quick lookup
+          const usersMap = new Map();
+          userIds.forEach(id => {
+            if (usersCache.has(id)) {
+              usersMap.set(id, usersCache.get(id));
+            }
+          });
+
+          // Extract payment IDs for batch fetching bills and attachments
+          const paymentIds = rows.map(row => row.id);
+
+          // Batch fetch all bills and attachments in parallel
+          const [billsResult, attachmentsResult] = await Promise.all([
+            supabase
+              .from('bills')
+              .select('*')
+              .in('payment_id', paymentIds),
+            supabase
+              .from('attachments')
+              .select('*')
+              .in('payment_id', paymentIds)
+          ]);
+
+          if (billsResult.error) {
+            console.error('Error fetching bills:', billsResult.error);
+          }
+
+          if (attachmentsResult.error) {
+            console.error('Error fetching attachments:', attachmentsResult.error);
+          }
+
+          // Group bills and attachments by payment_id for quick lookup
+          const billsMap = new Map<string, any[]>();
+          const attachmentsMap = new Map<string, any[]>();
+
+          billsResult.data?.forEach(bill => {
+            if (!billsMap.has(bill.payment_id)) {
+              billsMap.set(bill.payment_id, []);
+            }
+            billsMap.get(bill.payment_id)?.push(bill);
+          });
+
+          attachmentsResult.data?.forEach(attachment => {
+            if (!attachmentsMap.has(attachment.payment_id)) {
+              attachmentsMap.set(attachment.payment_id, []);
+            }
+            attachmentsMap.get(attachment.payment_id)?.push(attachment);
+          });
+
+          // Transform all payments with batched data
+          const payments = await transformPaymentsWithBatchedData(
+            rows,
+            usersMap,
+            billsMap,
+            attachmentsMap
+          );
+
+          // Calculate dashboard stats from the same data to avoid another API call
+          const stats = calculateDashboardStats(rows);
+          
+          set({ 
+            payments,
+            filteredPayments: payments,
+            isLoading: false,
+            dashboardStats: stats
+          });
+          
+          get().applyFilters();
+        } catch (error) {
+          console.error('Error in fetchPayments:', error);
+          throw error;
+        }
+      }, 'Failed to fetch payments. Please check your internet connection.');
+
+      if (!result) {
+        set({ isLoading: false });
       }
-    }, 'Failed to fetch payments. Please check your internet connection.');
-
-    if (!result) {
-      set({ isLoading: false });
+    } finally {
+      // Always reset the flag, even if an error occurs
+      isFetching = false;
     }
   },
   
   fetchDashboardStats: async () => {
-    try {
-      await withNetworkCheck(async () => {
-        // Get the current user's role
-        const { data } = await supabase.auth.getUser();
-        if (!data.user) {
-          console.log('No authenticated user found');
-          return;
-        }
-
-        const authUser = data.user;
-
-        // Get user data to determine role
-        const { data: userData, error: userError } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', authUser.id)
-          .single();
-
-        if (userError) {
-          console.error('Error fetching user role:', userError);
-          handleSupabaseError(userError);
-          return;
-        }
-
-        // Build query based on user role
-        let baseQuery = supabase.from('payments').select('*');
-        
-        // If user is not admin or accounts, only show their own payments
-        if (userData.role !== 'admin' && userData.role !== 'accounts') {
-          baseQuery = baseQuery.eq('requested_by', authUser.id);
-        }
-
-        const { data: payments, error } = await baseQuery;
-        
-        if (error) {
-          console.error('Error fetching payments for stats:', error);
-          handleSupabaseError(error);
-          return;
-        }
-
-        // Calculate statistics
-        const total = payments.length;
-        const pending = payments.filter(p => p.status === 'pending').length;
-        const approved = payments.filter(p => p.status === 'approved').length;
-        const rejected = payments.filter(p => p.status === 'rejected').length;
-        const processed = payments.filter(p => p.status === 'processed').length;
-        const queryRaised = payments.filter(p => p.status === 'query_raised').length;
-
-        // Calculate overdue advance invoices
-        const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-        const overdueAdvanceInvoices = payments.filter(p => 
-          p.status === 'processed' &&
-          (p.advance_details === 'advance' || p.advance_details === 'advance_(bill/PI)') &&
-          (!p.invoice_received || p.invoice_received === 'no') &&
-          new Date(p.updated_at) < oneWeekAgo
-        ).length;
-
-        const totalAmount = payments.reduce((sum, p) => sum + p.payment_amount, 0);
-        const pendingAmount = payments
-          .filter(p => p.status === 'pending')
-          .reduce((sum, p) => sum + p.payment_amount, 0);
-
-        const stats: DashboardStats = {
-          total,
-          pending,
-          approved,
-          rejected,
-          processed,
-          queryRaised,
-          overdueAdvanceInvoices,
-          totalAmount,
-          pendingAmount,
-        };
-
-        set({ dashboardStats: stats });
-      }, 'Failed to fetch dashboard statistics. Please check your internet connection.');
-    } catch (error) {
-      console.log('Failed to fetch dashboard stats due to network issues');
+    // Stats are now calculated during fetchPayments to avoid duplicate API calls
+    // This function is kept for backwards compatibility but doesn't make additional calls
+    const { payments, dashboardStats } = get();
+    
+    if (dashboardStats) {
+      // Stats already available, no need for additional API call
+      console.log('Dashboard stats already available, skipping redundant API call');
+      return;
     }
+    
+    if (payments.length > 0) {
+      // If payments are loaded but stats aren't available, recalculate from existing data
+      const rawPayments = payments.map(p => ({
+        status: p.status,
+        advance_details: p.advanceDetails,
+        invoice_received: p.invoiceReceived,
+        payment_amount: p.paymentAmount,
+        updated_at: p.updatedAt
+      })) as PaymentRow[];
+      
+      const stats = calculateDashboardStats(rawPayments);
+      set({ dashboardStats: stats });
+      return;
+    }
+    
+    // If no payments are loaded, fetch them (which will also calculate stats)
+    console.log('No payments loaded, calling fetchPayments to get data and stats');
+    await get().fetchPayments();
   },
   
   addPayment: async (paymentData) => {
@@ -450,7 +630,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
 
         // Fetch the complete payment with all relations
-        const completePayment = await transformPaymentRow(payment);
+        const completePayment = await transformSinglePayment(payment);
         
         // Update local state
         set(state => ({
@@ -494,7 +674,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           return false;
         }
 
-        const transformedPayment = await transformPaymentRow(data);
+        const transformedPayment = await transformSinglePayment(data);
         
         set(state => ({
           payments: state.payments.map(payment => 
@@ -536,7 +716,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           return false;
         }
 
-        const transformedPayment = await transformPaymentRow(data);
+        const transformedPayment = await transformSinglePayment(data);
         
         set(state => ({
           payments: state.payments.map(payment => 
@@ -575,7 +755,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           return false;
         }
 
-        const transformedPayment = await transformPaymentRow(data);
+        const transformedPayment = await transformSinglePayment(data);
         
         set(state => ({
           payments: state.payments.map(payment => 
@@ -616,7 +796,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           return false;
         }
 
-        const transformedPayment = await transformPaymentRow(data);
+        const transformedPayment = await transformSinglePayment(data);
         
         set(state => ({
           payments: state.payments.map(payment => 
@@ -825,7 +1005,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
         if (fetchUpdatedError) throw fetchUpdatedError;
 
-        const transformedPayment = await transformPaymentRow(updatedPayment);
+        const transformedPayment = await transformSinglePayment(updatedPayment);
         
         // Update local state
         set(state => ({

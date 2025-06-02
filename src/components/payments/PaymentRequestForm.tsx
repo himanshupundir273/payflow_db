@@ -54,14 +54,26 @@ interface PaymentRequestFormProps {
   editingPaymentId?: string;
 }
 
+// const COMPANY_OPTIONS = [
+//   'Atlanta',
+//   'Atlanta (L)',
+//   'Bestco',
+//   'Copperlite',
+//   'NotoFire',
+//   'Valuecon',
+//   'Satguru',
+// ];
+
 const COMPANY_OPTIONS = [
-  'Atlanta',
-  'Atlanta (L)',
-  'Bestco',
-  'Copperlite',
-  'NotoFire',
-  'Valuecon',
-  'Satguru',
+  'ATC',//Atlanta
+  'ATCL',//Atlanta (L)
+  'BTC',//Bestco
+  'CLITE',//Copperlite
+  'NOTO',//NotoFire
+  'VCON',//Valuecon
+  'SGC',//Satguru
+  'NCCE',//New
+  'GJ-SB',//New
 ];
 
 const BRANCH_OPTIONS = ['DL', 'MP', 'UK', 'UP'];

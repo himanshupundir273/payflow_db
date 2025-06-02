@@ -37,9 +37,17 @@ const DashboardPage: React.FC = () => {
   // Fetch dashboard stats on component mount and when user changes
   React.useEffect(() => {
     if (user) {
-      fetchDashboardStats();
+      // Stats are now calculated during fetchPayments, so no separate call needed
+      // fetchDashboardStats() is no longer necessary
     }
-  }, [user, fetchDashboardStats]);
+  }, [user]);
+
+  // Fetch payments when dashboard loads if not already loaded
+  React.useEffect(() => {
+    if (user && payments.length === 0 && !isRefreshing) {
+      fetchPayments();
+    }
+  }, [user, payments.length, isRefreshing, fetchPayments]);
 
   // Use stats from store or provide defaults
   const stats = dashboardStats || {
@@ -82,8 +90,8 @@ const DashboardPage: React.FC = () => {
       if (!(await checkNetworkConnection())) {
         return;
       }
+      // Only call fetchPayments since it now also calculates dashboard stats
       await fetchPayments();
-      await fetchDashboardStats();
     } catch (error) {
       console.error('Error refreshing payments:', error);
     } finally {
