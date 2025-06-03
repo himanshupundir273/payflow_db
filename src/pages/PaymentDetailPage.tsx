@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import PaymentStatusBadge from '../components/payments/PaymentStatusBadge';
 import QueryDialog from '../components/payments/QueryDialog';
+import AccountsQueryDialog from '../components/payments/AccountsQueryDialog';
+import ProcessPaymentDialog from '../components/payments/ProcessPaymentDialog';
 import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -36,6 +38,7 @@ const PaymentDetailPage: React.FC = () => {
     rejectPayment,
     markAsProcessed,
     raiseQuery,
+    raiseAccountsQuery,
     updatePayment,
     markInvoiceReceived,
     isLoading,
@@ -44,6 +47,9 @@ const PaymentDetailPage: React.FC = () => {
   // Local state for the current payment details
   const [payment, setPayment] = useState<PaymentRequest | null>(null);
   const [isQueryDialogOpen, setIsQueryDialogOpen] = useState(false);
+  const [isAccountsQueryDialogOpen, setIsAccountsQueryDialogOpen] =
+    useState(false);
+  const [isProcessDialogOpen, setIsProcessDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -174,25 +180,30 @@ const PaymentDetailPage: React.FC = () => {
   const handleApprove = async () => {
     if (!user || !payment) return;
     await approvePayment(payment.id, user);
-    // Refresh payment details after approval
-    const updatedPayment = await fetchPaymentById(payment.id);
-    if (updatedPayment) setPayment(updatedPayment);
+    // Navigate back to previous screen after approval
+    navigate(-1);
   };
 
   const handleReject = async () => {
     if (!user || !payment) return;
     await rejectPayment(payment.id, user);
-    // Refresh payment details after rejection
-    const updatedPayment = await fetchPaymentById(payment.id);
-    if (updatedPayment) setPayment(updatedPayment);
+    // Navigate back to previous screen after rejection
+    navigate(-1);
   };
 
   const handleProcess = async () => {
+    setIsProcessDialogOpen(true);
+  };
+
+  const handleProcessSubmit = async (
+    invoiceReceived: 'yes' | 'no',
+    paymentAmount: number
+  ) => {
     if (!payment) return;
-    await markAsProcessed(payment.id);
-    // Refresh payment details after processing
-    const updatedPayment = await fetchPaymentById(payment.id);
-    if (updatedPayment) setPayment(updatedPayment);
+    await markAsProcessed(payment.id, invoiceReceived, paymentAmount);
+    setIsProcessDialogOpen(false);
+    // Navigate back to previous screen after processing
+    navigate(-1);
   };
 
   const handleQuery = () => {
@@ -203,9 +214,20 @@ const PaymentDetailPage: React.FC = () => {
     if (!user || !payment) return;
     await raiseQuery(payment.id, user, query);
     setIsQueryDialogOpen(false);
-    // Refresh payment details after raising query
-    const updatedPayment = await fetchPaymentById(payment.id);
-    if (updatedPayment) setPayment(updatedPayment);
+    // Navigate back to previous screen after raising query
+    navigate(-1);
+  };
+
+  const handleAccountsQuery = () => {
+    setIsAccountsQueryDialogOpen(true);
+  };
+
+  const handleAccountsQuerySubmit = async (query: string) => {
+    if (!user || !payment) return;
+    await raiseAccountsQuery(payment.id, user, query);
+    setIsAccountsQueryDialogOpen(false);
+    // Navigate back to previous screen after raising accounts query
+    navigate(-1);
   };
 
   const handleUpdate = async () => {
@@ -215,9 +237,8 @@ const PaymentDetailPage: React.FC = () => {
       status: 'pending',
     });
     setIsEditing(false);
-    // Refresh payment details after update
-    const updatedPayment = await fetchPaymentById(payment.id);
-    if (updatedPayment) setPayment(updatedPayment);
+    // Navigate back to previous screen after update
+    navigate(-1);
   };
 
   const handleMarkInvoiceReceived = async () => {
@@ -228,9 +249,8 @@ const PaymentDetailPage: React.FC = () => {
       const success = await markInvoiceReceived(payment.id);
       if (success) {
         toast.success('Invoice marked as received successfully');
-        // Refresh payment details after marking invoice received
-        const updatedPayment = await fetchPaymentById(payment.id);
-        if (updatedPayment) setPayment(updatedPayment);
+        // Navigate back to previous screen after marking invoice received
+        navigate(-1);
       } else {
         toast.error('Failed to mark invoice as received');
       }
@@ -376,6 +396,24 @@ const PaymentDetailPage: React.FC = () => {
                     </h3>
                     <p className="text-sm text-warning-700">
                       {payment.queryDetails}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {payment.status === 'approved' && payment.accountsQuery && (
+              <div className="mb-6 p-4 bg-warning-50 rounded-lg border border-warning-200">
+                <div className="flex items-start space-x-3">
+                  <div className="flex-shrink-0">
+                    <AlertCircle className="h-5 w-5 text-warning-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-warning-800 mb-1">
+                      Accounts Query
+                    </h3>
+                    <p className="text-sm text-warning-700">
+                      {payment.accountsQuery}
                     </p>
                   </div>
                 </div>
@@ -731,7 +769,15 @@ const PaymentDetailPage: React.FC = () => {
 
               {/* Accounts actions */}
               {user?.role === 'accounts' && payment.status === 'approved' && (
-                <div className="flex justify-end mt-6">
+                <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 mt-6">
+                  <Button
+                    variant="warning"
+                    icon={<FileText className="h-5 w-5" />}
+                    onClick={handleAccountsQuery}
+                    className="w-full sm:w-auto"
+                  >
+                    Query
+                  </Button>
                   <Button
                     variant="primary"
                     icon={<CheckCircle2 className="h-5 w-5" />}
@@ -769,6 +815,19 @@ const PaymentDetailPage: React.FC = () => {
           isOpen={isQueryDialogOpen}
           onClose={() => setIsQueryDialogOpen(false)}
           onSubmit={handleQuerySubmit}
+        />
+
+        <AccountsQueryDialog
+          isOpen={isAccountsQueryDialogOpen}
+          onClose={() => setIsAccountsQueryDialogOpen(false)}
+          onSubmit={handleAccountsQuerySubmit}
+        />
+
+        <ProcessPaymentDialog
+          isOpen={isProcessDialogOpen}
+          onClose={() => setIsProcessDialogOpen(false)}
+          onSubmit={handleProcessSubmit}
+          currentPaymentAmount={payment?.paymentAmount || 0}
         />
       </div>
     </>

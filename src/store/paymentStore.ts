@@ -15,6 +15,7 @@ interface DashboardStats {
   rejected: number;
   processed: number;
   queryRaised: number;
+  accountsQueriesRaised: number;
   overdueAdvanceInvoices: number;
   totalAmount: number;
   pendingAmount: number;
@@ -50,9 +51,10 @@ interface PaymentState {
   addPayment: (payment: Omit<PaymentRequest, 'id' | 'serialNumber' | 'status' | 'createdAt' | 'updatedAt' | 'approvedBy'>) => Promise<PaymentRequest | null>;
   approvePayment: (id: string, approver: User) => Promise<void>;
   rejectPayment: (id: string, approver: User) => Promise<void>;
-  markAsProcessed: (id: string) => Promise<void>;
+  markAsProcessed: (id: string, invoiceReceived?: 'yes' | 'no', paymentAmount?: number) => Promise<void>;
   markInvoiceReceived: (id: string) => Promise<boolean>;
   raiseQuery: (id: string, approver: User, query: string) => Promise<boolean>;
+  raiseAccountsQuery: (id: string, accountsUser: User, query: string) => Promise<boolean>;
   setFilterOptions: (options: Partial<FilterOptions>) => void;
   setSearchTerm: (searchTerm: string) => void;
   applyFilters: () => void;
@@ -75,6 +77,7 @@ const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
   const rejected = payments.filter(p => p.status === 'rejected').length;
   const processed = payments.filter(p => p.status === 'processed').length;
   const queryRaised = payments.filter(p => p.status === 'query_raised').length;
+  const accountsQueriesRaised = payments.filter(p => p.accounts_query && p.accounts_query.trim() !== '').length;
 
   // Calculate overdue advance invoices
   const oneWeekAgo = new Date();
@@ -99,6 +102,7 @@ const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
     rejected,
     processed,
     queryRaised,
+    accountsQueriesRaised,
     overdueAdvanceInvoices,
     totalAmount,
     pendingAmount,
@@ -218,6 +222,7 @@ const transformSinglePayment = async (row: PaymentRow): Promise<PaymentRequest> 
       bankName: row.bank_name,
       status: row.status,
       queryDetails: row.query_details || undefined,
+      accountsQuery: row.accounts_query || undefined,
       lpr: row.lpr || undefined,
       ioa: row.ioa || undefined,
       cpp: row.cpp || undefined,
@@ -300,6 +305,7 @@ const transformPaymentsWithBatchedData = async (
       bankName: row.bank_name,
       status: row.status,
       queryDetails: row.query_details || undefined,
+      accountsQuery: row.accounts_query || undefined,
       lpr: row.lpr || undefined,
       ioa: row.ioa || undefined,
       cpp: row.cpp || undefined,
@@ -611,6 +617,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               bankName: row.bank_name,
               status: row.status,
               queryDetails: row.query_details || undefined,
+              accountsQuery: row.accounts_query || undefined,
               lpr: row.lpr || undefined,
               ioa: row.ioa || undefined,
               cpp: row.cpp || undefined,
@@ -890,14 +897,39 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
   },
   
-  markAsProcessed: async (id: string) => {
+  markAsProcessed: async (id: string, invoiceReceived?: 'yes' | 'no', paymentAmount?: number) => {
     set({ isLoading: true });
     
     const result = await withNetworkCheck(async () => {
       try {
+        // First get the current payment to access total outstanding
+        const { data: currentPayment, error: fetchError } = await supabase
+          .from('payments')
+          .select('total_outstanding, payment_amount')
+          .eq('id', id)
+          .single();
+
+        if (fetchError) throw fetchError;
+        
+        const updateData: any = { 
+          status: 'processed',
+          updated_at: new Date().toISOString()
+        };
+        
+        // Add optional fields if provided
+        if (invoiceReceived !== undefined) {
+          updateData.invoice_received = invoiceReceived;
+        }
+        
+        if (paymentAmount !== undefined) {
+          updateData.payment_amount = paymentAmount;
+          // Recalculate balance amount when payment amount changes
+          updateData.balance_amount = currentPayment.total_outstanding - paymentAmount;
+        }
+
         const { data, error } = await supabase
           .from('payments')
-          .update({ status: 'processed' })
+          .update(updateData)
           .eq('id', id)
           .select()
           .single();
@@ -1012,6 +1044,93 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     if (!result) {
       set({ isLoading: false });
+      return false;
+    }
+
+    return result;
+  },
+  
+  raiseAccountsQuery: async (id: string, accountsUser: User, query: string) => {
+    set({ isLoading: true });
+    
+    const result = await withNetworkCheck(async () => {
+      try {
+        // First, check if the payment exists and get current data
+        console.log('Attempting to raise accounts query for payment ID:', id);
+        console.log('Query text:', query);
+        console.log('User role:', accountsUser.role);
+
+        const { data: existingPayment, error: fetchError } = await supabase
+          .from('payments')
+          .select('id, status, accounts_query')
+          .eq('id', id)
+          .single();
+
+        if (fetchError) {
+          console.error('Error fetching payment for verification:', fetchError);
+          showErrorToast(`Cannot find payment: ${fetchError.message}`);
+          throw fetchError;
+        }
+
+        if (!existingPayment) {
+          console.error('Payment not found with ID:', id);
+          showErrorToast('Payment not found');
+          throw new Error('Payment not found');
+        }
+
+        console.log('Current payment data:', existingPayment);
+
+        // Now attempt the update
+        console.log('Attempting to update accounts_query field...');
+        // NOTE: Accounts queries do NOT change the payment status - it remains "approved"
+        const { error } = await supabase
+          .from('payments')
+          .update({ 
+            accounts_query: query,
+            updated_at: new Date().toISOString()
+            // Explicitly NOT updating status - it should remain "approved"
+          })
+          .eq('id', id);
+
+        if (error) {
+          console.error('Database error in raiseAccountsQuery:', error);
+          console.error('Error details:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          });
+          showErrorToast(`Database error: ${error.message} (Code: ${error.code})`);
+          throw error;
+        }
+
+        console.log('Successfully updated accounts_query field');
+
+        // Update local state
+        set(state => ({
+          payments: state.payments.map(payment => 
+            payment.id === id 
+              ? { ...payment, accountsQuery: query }
+              : payment
+          ),
+          filteredPayments: state.filteredPayments.map(payment => 
+            payment.id === id 
+              ? { ...payment, accountsQuery: query }
+              : payment
+          )
+        }));
+
+        showSuccessToast('Accounts query raised successfully');
+        return true;
+      } catch (error) {
+        console.error('Error raising accounts query:', error);
+        throw error;
+      }
+    }, 'Failed to raise accounts query. Please check your internet connection.');
+
+    set({ isLoading: false });
+
+    if (!result) {
       return false;
     }
 
@@ -1140,8 +1259,6 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               payment_id: id,
               bill_number: bill.billNumber,
               bill_date: bill.billDate,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
             }))
           );
 
@@ -1382,6 +1499,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               bankName: row.bank_name,
               status: row.status,
               queryDetails: row.query_details || undefined,
+              accountsQuery: row.accounts_query || undefined,
               lpr: row.lpr || undefined,
               ioa: row.ioa || undefined,
               cpp: row.cpp || undefined,

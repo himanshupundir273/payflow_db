@@ -93,6 +93,7 @@ const DashboardPage: React.FC = () => {
     rejected: 0,
     processed: 0,
     queryRaised: 0,
+    accountsQueriesRaised: 0,
     overdueAdvanceInvoices: 0,
     totalAmount: 0,
     pendingAmount: 0,
@@ -291,6 +292,35 @@ const DashboardPage: React.FC = () => {
           <span className="ml-2 text-warning-600">Click to view</span>
         </div>
       )}
+
+      {/* Alert for accounts queries - visible to users whose payments have accounts queries */}
+      {(user?.role === 'user' || user?.role === 'admin') &&
+        stats.accountsQueriesRaised > 0 && (
+          <div
+            className="mb-4 inline-flex items-center px-3 py-2 rounded-lg bg-warning-100 text-warning-800 cursor-pointer hover:bg-warning-200 transition-colors"
+            onClick={() => {
+              // Navigate to payments page to show payments with accounts queries
+              setFilterOptions({
+                status: ['approved'], // Accounts queries are on approved payments
+                dateRange: { start: null, end: null },
+                vendor: null,
+                company: null,
+                overdueInvoices: false,
+              });
+              navigate('/payments');
+            }}
+          >
+            <AlertCircle className="h-4 w-4 mr-2" />
+            <span className="font-medium">
+              {stats.accountsQueriesRaised}{' '}
+              {stats.accountsQueriesRaised === 1
+                ? 'accounts query'
+                : 'accounts queries'}{' '}
+              raised
+            </span>
+            <span className="ml-2 text-warning-600">Click to view</span>
+          </div>
+        )}
 
       {/* Alert for overdue advance invoices - visible to all users */}
       {stats.overdueAdvanceInvoices > 0 && (

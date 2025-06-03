@@ -47,6 +47,7 @@ export interface PaymentRequest {
   bankName: string;
   status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised';
   queryDetails?: string;
+  accountsQuery?: string;
   lpr?: string | null;
   ioa?: string | null;
   cpp?: string | null;

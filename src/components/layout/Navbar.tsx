@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useAuthStore } from "../../store/authStore";
-import { UserRole } from "../../types";
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/authStore';
+import { UserRole } from '../../types';
 import {
   LogOut,
   Menu,
@@ -10,13 +10,15 @@ import {
   Wallet,
   BarChart3,
   FileText,
-} from "lucide-react";
-import Button from "../ui/Button";
+  Lock,
+} from 'lucide-react';
+import Button from '../ui/Button';
+import ChangePasswordDialog from '../auth/ChangePasswordDialog';
 
 const roleNames: Record<UserRole, string> = {
-  user: "Employee",
-  admin: "Admin",
-  accounts: "Accounts",
+  user: 'Employee',
+  admin: 'Admin',
+  accounts: 'Accounts',
 };
 
 const Navbar: React.FC = () => {
@@ -24,6 +26,7 @@ const Navbar: React.FC = () => {
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,7 +35,10 @@ const Navbar: React.FC = () => {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(event.target as Node)
+      ) {
         setIsProfileOpen(false);
       }
     };
@@ -45,7 +51,7 @@ const Navbar: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    navigate("/login");
+    navigate('/login');
   };
 
   const toggleMenu = () => {
@@ -56,121 +62,134 @@ const Navbar: React.FC = () => {
     setIsProfileOpen(!isProfileOpen);
   };
 
+  const handleChangePasswordClick = () => {
+    setIsProfileOpen(false);
+    setIsChangePasswordOpen(true);
+  };
 
   return (
-    <nav className="bg-white shadow-sm border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          <div className="flex">
-            <div className="flex-shrink-0 flex items-center">
-              <Wallet className="h-8 w-8 text-primary-600" />
-              <Link to="/dashboard">
-                <span className="ml-2 text-xl font-bold text-primary-900">
-                  PayFlow
-                </span>
-              </Link>
-            </div>
-
-            {/* Desktop menu */}
-            {user && (
-              <div className="hidden sm:ml-6 sm:flex sm:items-center sm:space-x-4">
-                <Link
-                  to="/dashboard"
-                  className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
-                >
-                  Dashboard
+    <>
+      <nav className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16">
+            <div className="flex">
+              <div className="flex-shrink-0 flex items-center">
+                <Wallet className="h-8 w-8 text-primary-600" />
+                <Link to="/dashboard">
+                  <span className="ml-2 text-xl font-bold text-primary-900">
+                    PayFlow
+                  </span>
                 </Link>
-
-                <Link
-                  to="/payments"
-                  className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
-                >
-                  Payments
-                </Link>
-
-                {(user.role === "admin" || user.role === "accounts") && (
-                  <Link
-                    to="/approvals"
-                    className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
-                  >
-                    Approvals
-                  </Link>
-                )}
-
-                {user.role === "accounts" && (
-                  <Link
-                    to="/export"
-                    className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
-                  >
-                    Export
-                  </Link>
-                )}
               </div>
-            )}
-          </div>
 
-          {/* Right side */}
-          <div className="flex items-center">
-            {user ? (
-              <div className="hidden sm:flex sm:items-center">
-                <div className="relative" ref={profileRef}>
-                  <button
-                    onClick={toggleProfile}
-                    className="flex items-center max-w-xs rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+              {/* Desktop menu */}
+              {user && (
+                <div className="hidden sm:ml-6 sm:flex sm:items-center sm:space-x-4">
+                  <Link
+                    to="/dashboard"
+                    className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
                   >
-                    <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700">
-                      {user.name.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="ml-2 font-medium text-gray-700">
-                      {user.name}
-                    </span>
-                    <span className="ml-1 text-xs bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full">
-                      {roleNames[user.role]}
-                    </span>
-                  </button>
+                    Dashboard
+                  </Link>
 
-                  {isProfileOpen && (
-                    <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 z-10">
-                      <button
-                        onClick={handleLogout}
-                        className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-100 flex items-center"
-                      >
-                        <LogOut className="h-4 w-4 mr-2" />
-                        Sign out
-                      </button>
-                    </div>
+                  <Link
+                    to="/payments"
+                    className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
+                  >
+                    Payments
+                  </Link>
+
+                  {(user.role === 'admin' || user.role === 'accounts') && (
+                    <Link
+                      to="/approvals"
+                      className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
+                    >
+                      Approvals
+                    </Link>
+                  )}
+
+                  {user.role === 'accounts' && (
+                    <Link
+                      to="/export"
+                      className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
+                    >
+                      Export
+                    </Link>
                   )}
                 </div>
-              </div>
-            ) : (
-              <div className="hidden sm:flex items-center space-x-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate("/login")}
-                >
-                  Login
-                </Button>
-              </div>
-            )}
+              )}
+            </div>
 
-            {/* Mobile menu button */}
-            <div className="flex items-center sm:hidden">
-              <button
-                onClick={toggleMenu}
-                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
-              >
-                <span className="sr-only">Open main menu</span>
-                {isMenuOpen ? (
-                  <X className="block h-6 w-6" />
-                ) : (
-                  <Menu className="block h-6 w-6" />
-                )}
-              </button>
+            {/* Right side */}
+            <div className="flex items-center">
+              {user ? (
+                <div className="hidden sm:flex sm:items-center">
+                  <div className="relative" ref={profileRef}>
+                    <button
+                      onClick={toggleProfile}
+                      className="flex items-center max-w-xs rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    >
+                      <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700">
+                        {user.name.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="ml-2 font-medium text-gray-700">
+                        {user.name}
+                      </span>
+                      <span className="ml-1 text-xs bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full">
+                        {roleNames[user.role]}
+                      </span>
+                    </button>
+
+                    {isProfileOpen && (
+                      <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 z-10">
+                        <button
+                          onClick={handleChangePasswordClick}
+                          className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-100 flex items-center"
+                        >
+                          <Lock className="h-4 w-4 mr-2" />
+                          Change Password
+                        </button>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full px-4 py-2 text-sm text-left text-gray-700 hover:bg-gray-100 flex items-center"
+                        >
+                          <LogOut className="h-4 w-4 mr-2" />
+                          Sign out
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="hidden sm:flex items-center space-x-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigate('/login')}
+                  >
+                    Login
+                  </Button>
+                </div>
+              )}
+
+              {/* Mobile menu button */}
+              <div className="flex items-center sm:hidden">
+                <button
+                  onClick={toggleMenu}
+                  className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
+                >
+                  <span className="sr-only">Open main menu</span>
+                  {isMenuOpen ? (
+                    <X className="block h-6 w-6" />
+                  ) : (
+                    <Menu className="block h-6 w-6" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </nav>
 
       {/* Mobile menu */}
       {isMenuOpen && (
@@ -216,7 +235,7 @@ const Navbar: React.FC = () => {
                   </div>
                 </Link>
 
-                {(user.role === "admin" || user.role === "accounts") && (
+                {(user.role === 'admin' || user.role === 'accounts') && (
                   <Link
                     to="/approvals"
                     className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
@@ -229,7 +248,7 @@ const Navbar: React.FC = () => {
                   </Link>
                 )}
 
-                {user.role === "accounts" && (
+                {user.role === 'accounts' && (
                   <Link
                     to="/export"
                     className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
@@ -244,7 +263,17 @@ const Navbar: React.FC = () => {
 
                 <div className="border-t border-gray-200 my-1"></div>
 
-                
+                <button
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setIsChangePasswordOpen(true);
+                  }}
+                  className="w-full flex items-center px-3 py-2 text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-md"
+                >
+                  <Lock className="h-5 w-5 mr-2" />
+                  Change Password
+                </button>
+
                 <button
                   onClick={() => {
                     handleLogout();
@@ -262,7 +291,7 @@ const Navbar: React.FC = () => {
                   variant="primary"
                   fullWidth
                   onClick={() => {
-                    navigate("/login");
+                    navigate('/login');
                     setIsMenuOpen(false);
                   }}
                 >
@@ -273,7 +302,13 @@ const Navbar: React.FC = () => {
           </div>
         </div>
       )}
-    </nav>
+
+      {/* Change Password Dialog */}
+      <ChangePasswordDialog
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
+    </>
   );
 };
 

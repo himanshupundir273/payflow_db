@@ -24,6 +24,7 @@ const ApprovalsPage: React.FC = () => {
     markAsProcessed,
     markInvoiceReceived,
     raiseQuery,
+    raiseAccountsQuery,
   } = usePaymentStore();
 
   const [showFilters, setShowFilters] = useState(false);
@@ -208,8 +209,12 @@ const ApprovalsPage: React.FC = () => {
     );
   };
 
-  const handleProcess = async (id: string) => {
-    await markAsProcessed(id);
+  const handleProcess = async (
+    id: string,
+    invoiceReceived: 'yes' | 'no',
+    paymentAmount: number
+  ) => {
+    await markAsProcessed(id, invoiceReceived, paymentAmount);
     // Refresh current page to reflect changes
     fetchPayments(
       pagination.page,
@@ -224,6 +229,20 @@ const ApprovalsPage: React.FC = () => {
   const handleQuery = async (id: string, query: string) => {
     if (!user) return;
     await raiseQuery(id, user, query);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
+  };
+
+  const handleAccountsQuery = async (id: string, query: string) => {
+    if (!user) return;
+    await raiseAccountsQuery(id, user, query);
     // Refresh current page to reflect changes
     fetchPayments(
       pagination.page,
@@ -336,6 +355,9 @@ const ApprovalsPage: React.FC = () => {
         onReject={user?.role === 'admin' ? handleReject : undefined}
         onProcess={user?.role === 'accounts' ? handleProcess : undefined}
         onQuery={user?.role === 'admin' ? handleQuery : undefined}
+        onAccountsQuery={
+          user?.role === 'accounts' ? handleAccountsQuery : undefined
+        }
         onMarkInvoiceReceived={
           user?.role === 'accounts' ? handleMarkInvoiceReceived : undefined
         }

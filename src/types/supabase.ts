@@ -53,6 +53,7 @@ export interface Database {
           bank_name: string
           status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details: string | null
+          accounts_query: string | null
           lpr: string | null
           ioa: string | null
           cpp: string | null
@@ -77,6 +78,7 @@ export interface Database {
           bank_name: string
           status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details?: string | null
+          accounts_query?: string | null
           lpr?: string | null
           ioa?: string | null
           cpp?: string | null
@@ -101,6 +103,7 @@ export interface Database {
           bank_name?: string
           status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details?: string | null
+          accounts_query?: string | null
           lpr?: string | null
           ioa?: string | null
           cpp?: string | null

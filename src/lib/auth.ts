@@ -78,4 +78,18 @@ export const getCurrentUser = async () => {
   } catch (error) {
     handleSupabaseError(error);
   }
+};
+
+export const changePassword = async (newPassword: string) => {
+  try {
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    handleSupabaseError(error);
+    throw error;
+  }
 }; 

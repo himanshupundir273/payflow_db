@@ -16,6 +16,8 @@ import Input from '../ui/Input';
 import Button from '../ui/Button';
 import ConfirmDialog from '../ui/ConfirmDialog';
 import QueryDialog from './QueryDialog';
+import AccountsQueryDialog from './AccountsQueryDialog';
+import ProcessPaymentDialog from './ProcessPaymentDialog';
 import { useAuthStore } from '../../store/authStore';
 
 interface PaymentTableProps {
@@ -24,8 +26,13 @@ interface PaymentTableProps {
   showActions?: boolean;
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
-  onProcess?: (id: string) => void;
+  onProcess?: (
+    id: string,
+    invoiceReceived: 'yes' | 'no',
+    paymentAmount: number
+  ) => void;
   onQuery?: (id: string, query: string) => void;
+  onAccountsQuery?: (id: string, query: string) => void;
   onMarkInvoiceReceived?: (id: string) => void;
   // Server-side pagination props
   serverPagination?: {
@@ -53,6 +60,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   onReject,
   onProcess,
   onQuery,
+  onAccountsQuery,
   onMarkInvoiceReceived,
   serverPagination,
 }) => {
@@ -98,6 +106,24 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   }>({
     isOpen: false,
     paymentId: '',
+  });
+
+  const [accountsQueryDialog, setAccountsQueryDialog] = useState<{
+    isOpen: boolean;
+    paymentId: string;
+  }>({
+    isOpen: false,
+    paymentId: '',
+  });
+
+  const [processDialog, setProcessDialog] = useState<{
+    isOpen: boolean;
+    paymentId: string;
+    currentPaymentAmount: number;
+  }>({
+    isOpen: false,
+    paymentId: '',
+    currentPaymentAmount: 0,
   });
 
   // Determine if we're using server-side or client-side pagination
@@ -291,20 +317,32 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     });
   };
 
-  const handleProcess = (id: string) => {
-    setConfirmDialog({
+  const handleProcess = (id: string, currentPaymentAmount: number) => {
+    setProcessDialog({
       isOpen: true,
-      title: 'Process Payment',
-      message: 'Are you sure you want to mark this payment as processed?',
-      action: () => {
-        onProcess?.(id);
-        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
-      },
+      paymentId: id,
+      currentPaymentAmount,
     });
   };
 
+  const handleProcessSubmit = (
+    invoiceReceived: 'yes' | 'no',
+    paymentAmount: number
+  ) => {
+    onProcess?.(processDialog.paymentId, invoiceReceived, paymentAmount);
+    setProcessDialog((prev) => ({ ...prev, isOpen: false }));
+  };
+
   const handleQuery = (id: string) => {
-    setQueryDialog((prev) => ({ ...prev, paymentId: id }));
+    setQueryDialog((prev) => ({ ...prev, paymentId: id, isOpen: true }));
+  };
+
+  const handleAccountsQuery = (id: string) => {
+    setAccountsQueryDialog((prev) => ({
+      ...prev,
+      paymentId: id,
+      isOpen: true,
+    }));
   };
 
   const handleMarkInvoiceReceived = (id: string) => {
@@ -650,23 +688,30 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                       <Button
                                         size="xs"
                                         variant="success"
-                                        onClick={() =>
-                                          handleApprove(payment.id)
-                                        }
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleApprove(payment.id);
+                                        }}
                                       >
                                         Approve
                                       </Button>
                                       <Button
                                         variant="danger"
                                         size="sm"
-                                        onClick={() => handleReject(payment.id)}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleReject(payment.id);
+                                        }}
                                       >
                                         Reject
                                       </Button>
                                       <Button
                                         variant="warning"
                                         size="sm"
-                                        onClick={() => handleQuery(payment.id)}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleQuery(payment.id);
+                                        }}
                                       >
                                         Query
                                       </Button>
@@ -675,13 +720,33 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                 {payment.status === 'approved' &&
                                   onProcess &&
                                   user?.role === 'accounts' && (
-                                    <Button
-                                      size="xs"
-                                      variant="primary"
-                                      onClick={() => handleProcess(payment.id)}
-                                    >
-                                      Process
-                                    </Button>
+                                    <>
+                                      <Button
+                                        size="xs"
+                                        variant="primary"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleProcess(
+                                            payment.id,
+                                            payment.paymentAmount
+                                          );
+                                        }}
+                                      >
+                                        Process
+                                      </Button>
+                                      {onAccountsQuery && (
+                                        <Button
+                                          size="xs"
+                                          variant="warning"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleAccountsQuery(payment.id);
+                                          }}
+                                        >
+                                          Query
+                                        </Button>
+                                      )}
+                                    </>
                                   )}
                                 {payment.status === 'processed' &&
                                   (payment.advanceDetails === 'advance' ||
@@ -694,9 +759,10 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                     <Button
                                       size="xs"
                                       variant="success"
-                                      onClick={() =>
-                                        handleMarkInvoiceReceived(payment.id)
-                                      }
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMarkInvoiceReceived(payment.id);
+                                      }}
                                     >
                                       Mark Invoice Received
                                     </Button>
@@ -841,6 +907,26 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
           onQuery?.(queryDialog.paymentId, query);
           setQueryDialog((prev) => ({ ...prev, isOpen: false }));
         }}
+      />
+
+      <AccountsQueryDialog
+        isOpen={accountsQueryDialog.isOpen}
+        onClose={() =>
+          setAccountsQueryDialog((prev) => ({ ...prev, isOpen: false }))
+        }
+        onSubmit={(query) => {
+          onAccountsQuery?.(accountsQueryDialog.paymentId, query);
+          setAccountsQueryDialog((prev) => ({ ...prev, isOpen: false }));
+        }}
+      />
+
+      <ProcessPaymentDialog
+        isOpen={processDialog.isOpen}
+        onClose={() => setProcessDialog((prev) => ({ ...prev, isOpen: false }))}
+        onSubmit={(invoiceReceived, paymentAmount) => {
+          handleProcessSubmit(invoiceReceived, paymentAmount);
+        }}
+        currentPaymentAmount={processDialog.currentPaymentAmount}
       />
     </>
   );
