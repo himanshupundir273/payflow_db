@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { usePaymentStore } from '../store/paymentStore';
 import PaymentTable from '../components/payments/PaymentTable';
@@ -11,8 +11,14 @@ const ApprovalsPage: React.FC = () => {
   const {
     payments,
     filteredPayments,
+    isLoading,
+    pagination,
+    sortOptions,
+    searchTerm,
+    fetchPayments,
     filterOptions,
     setFilterOptions,
+    setSearchTerm,
     approvePayment,
     rejectPayment,
     markAsProcessed,
@@ -21,6 +27,13 @@ const ApprovalsPage: React.FC = () => {
   } = usePaymentStore();
 
   const [showFilters, setShowFilters] = useState(false);
+
+  // Fetch payments when component mounts
+  React.useEffect(() => {
+    if (user && payments.length === 0) {
+      fetchPayments(1, 10, true, filterOptions);
+    }
+  }, [user, fetchPayments]);
 
   // Set initial filter based on user role
   useEffect(() => {
@@ -47,6 +60,93 @@ const ApprovalsPage: React.FC = () => {
     { value: 'processed', label: 'Processed' },
     { value: 'query_raised', label: 'Query Raised' },
   ];
+
+  const handlePageChange = useCallback(
+    (page: number) => {
+      fetchPayments(
+        page,
+        pagination.pageSize,
+        true,
+        filterOptions,
+        sortOptions,
+        searchTerm
+      );
+    },
+    [fetchPayments, pagination.pageSize, filterOptions, sortOptions, searchTerm]
+  );
+
+  const handlePageSizeChange = useCallback(
+    (pageSize: number) => {
+      fetchPayments(1, pageSize, true, filterOptions, sortOptions, searchTerm);
+    },
+    [fetchPayments, filterOptions, sortOptions, searchTerm]
+  );
+
+  const handleSort = useCallback(
+    (field: string, direction: 'asc' | 'desc') => {
+      const newSortOptions = { field, direction };
+      fetchPayments(
+        1,
+        pagination.pageSize,
+        true,
+        filterOptions,
+        newSortOptions,
+        searchTerm
+      );
+    },
+    [fetchPayments, pagination.pageSize, filterOptions, searchTerm]
+  );
+
+  const handleSearch = useCallback(
+    (newSearchTerm: string) => {
+      setSearchTerm(newSearchTerm);
+      fetchPayments(
+        1,
+        pagination.pageSize,
+        true,
+        filterOptions,
+        sortOptions,
+        newSearchTerm
+      );
+    },
+    [
+      setSearchTerm,
+      fetchPayments,
+      pagination.pageSize,
+      filterOptions,
+      sortOptions,
+    ]
+  );
+
+  // Memoize serverPagination object to prevent unnecessary re-renders
+  const serverPaginationConfig = useMemo(
+    () => ({
+      currentPage: pagination.page,
+      pageSize: pagination.pageSize,
+      totalCount: pagination.totalCount,
+      totalPages: pagination.totalPages,
+      onPageChange: handlePageChange,
+      onPageSizeChange: handlePageSizeChange,
+      sortField: sortOptions.field,
+      sortDirection: sortOptions.direction,
+      onSort: handleSort,
+      searchTerm: searchTerm,
+      onSearch: handleSearch,
+    }),
+    [
+      pagination.page,
+      pagination.pageSize,
+      pagination.totalCount,
+      pagination.totalPages,
+      handlePageChange,
+      handlePageSizeChange,
+      sortOptions.field,
+      sortOptions.direction,
+      handleSort,
+      searchTerm,
+      handleSearch,
+    ]
+  );
 
   const handleStatusFilterChange = (status: string) => {
     if (status === 'all') {
@@ -76,31 +176,76 @@ const ApprovalsPage: React.FC = () => {
       dateRange: { start: null, end: null },
       vendor: null,
       company: null,
+      overdueInvoices: false,
     });
   };
 
   const handleApprove = async (id: string) => {
-    if (!user || user.role !== 'admin') return;
+    if (!user) return;
     await approvePayment(id, user);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
 
   const handleReject = async (id: string) => {
-    if (!user || user.role !== 'admin') return;
+    if (!user) return;
     await rejectPayment(id, user);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
 
   const handleProcess = async (id: string) => {
-    if (!user || user.role !== 'accounts') return;
     await markAsProcessed(id);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
 
   const handleQuery = async (id: string, query: string) => {
-    if (!user || user.role !== 'admin') return;
+    if (!user) return;
     await raiseQuery(id, user, query);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
 
   const handleMarkInvoiceReceived = async (id: string) => {
     await markInvoiceReceived(id);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
 
   return (
@@ -185,6 +330,8 @@ const ApprovalsPage: React.FC = () => {
 
       <PaymentTable
         payments={filteredPayments}
+        isLoading={isLoading}
+        showActions={true}
         onApprove={user?.role === 'admin' ? handleApprove : undefined}
         onReject={user?.role === 'admin' ? handleReject : undefined}
         onProcess={user?.role === 'accounts' ? handleProcess : undefined}
@@ -192,7 +339,7 @@ const ApprovalsPage: React.FC = () => {
         onMarkInvoiceReceived={
           user?.role === 'accounts' ? handleMarkInvoiceReceived : undefined
         }
-        showActions={true}
+        serverPagination={serverPaginationConfig}
       />
     </div>
   );

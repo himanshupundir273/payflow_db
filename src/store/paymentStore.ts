@@ -20,15 +20,32 @@ interface DashboardStats {
   pendingAmount: number;
 }
 
+interface PaginationOptions {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+}
+
+interface SortOptions {
+  field: string;
+  direction: 'asc' | 'desc';
+}
+
 interface PaymentState {
   payments: PaymentRequest[];
   filteredPayments: PaymentRequest[];
   filterOptions: FilterOptions;
   isLoading: boolean;
   dashboardStats: DashboardStats | null;
+  pagination: PaginationOptions;
+  sortOptions: SortOptions;
+  searchTerm: string;
   
   // Actions
-  fetchPayments: () => Promise<void>;
+  fetchPayments: (page?: number, pageSize?: number, forceRefresh?: boolean, filters?: Partial<FilterOptions>, sortOptions?: SortOptions, searchTerm?: string) => Promise<void>;
+  fetchPaymentById: (id: string) => Promise<PaymentRequest | null>;
+  fetchDashboardPayments: () => Promise<PaymentRequest[]>;
   fetchDashboardStats: () => Promise<void>;
   addPayment: (payment: Omit<PaymentRequest, 'id' | 'serialNumber' | 'status' | 'createdAt' | 'updatedAt' | 'approvedBy'>) => Promise<PaymentRequest | null>;
   approvePayment: (id: string, approver: User) => Promise<void>;
@@ -37,6 +54,7 @@ interface PaymentState {
   markInvoiceReceived: (id: string) => Promise<boolean>;
   raiseQuery: (id: string, approver: User, query: string) => Promise<boolean>;
   setFilterOptions: (options: Partial<FilterOptions>) => void;
+  setSearchTerm: (searchTerm: string) => void;
   applyFilters: () => void;
   exportToExcel: () => void;
   updatePayment: (id: string, paymentData: Partial<PaymentRequest>) => Promise<boolean>;
@@ -304,18 +322,74 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     },
     vendor: null,
     company: null,
+    overdueInvoices: false,
   },
   dashboardStats: null,
+  pagination: {
+    page: 1,
+    pageSize: 10,
+    totalCount: 0,
+    totalPages: 0,
+  },
+  sortOptions: {
+    field: 'created_at',
+    direction: 'desc',
+  },
+  searchTerm: '',
   
-  fetchPayments: async () => {
+  fetchPayments: async (page?: number, pageSize?: number, forceRefresh?: boolean, filters?: Partial<FilterOptions>, sortOptions?: SortOptions, searchTerm?: string) => {
     // Prevent concurrent calls
-    if (isFetching) {
+    if (isFetching && !forceRefresh) {
       console.log('fetchPayments already in progress, skipping duplicate call');
       return;
     }
     
     isFetching = true;
     set({ isLoading: true });
+    
+    // Use provided pagination parameters or defaults
+    const currentPagination = get().pagination;
+    const currentPage = page ?? currentPagination.page;
+    const currentPageSize = pageSize ?? currentPagination.pageSize;
+    
+    // Use provided filters or current filter options
+    const currentFilters = filters ?? get().filterOptions;
+    
+    // Use provided sort options or current sort options
+    const currentSortOptions = sortOptions ?? get().sortOptions;
+    
+    // Use provided search term or current search term
+    const currentSearchTerm = searchTerm ?? get().searchTerm;
+    
+    // Update sort options in state if provided
+    if (sortOptions) {
+      set(state => ({
+        sortOptions: sortOptions
+      }));
+    }
+    
+    // Update search term in state if provided
+    if (searchTerm !== undefined) {
+      set(state => ({
+        searchTerm: searchTerm
+      }));
+    }
+
+    // Map frontend field names to database column names
+    const getDbColumnName = (field: string): string => {
+      const fieldMapping: Record<string, string> = {
+        'serialNumber': 'serial_number',
+        'date': 'date',
+        'companyName': 'company_name',
+        'vendorName': 'vendor_name',
+        'advanceDetails': 'advance_details',
+        'paymentAmount': 'payment_amount',
+        'status': 'status',
+        'createdAt': 'created_at',
+        'updatedAt': 'updated_at'
+      };
+      return fieldMapping[field] || 'created_at';
+    };
     
     try {
       const result = await withNetworkCheck(async () => {
@@ -327,38 +401,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             return;
           }
 
-          // First check if user exists in users table
-          const { data: existingUser, error: checkError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', authUser.id)
-            .single();
-
-          if (checkError) {
-            console.log('User not found in users table, creating new user');
-            // If user doesn't exist, create them with default role
-            const { data: newUser, error: createError } = await supabase
-              .from('users')
-              .insert([
-                {
-                  id: authUser.id,
-                  email: authUser.email || 'unknown@example.com',
-                  name: authUser.email?.split('@')[0] || 'User',
-                  role: 'user',
-                  company: 'Default Company'
-                }
-              ])
-              .select()
-              .single();
-
-            if (createError) {
-              console.error('Error creating user:', createError);
-              handleSupabaseError(createError);
-              return;
-            }
-          }
-
-          // Now fetch the user's role
+          // Get user role (minimal query)
           const { data: userData, error: userError } = await supabase
             .from('users')
             .select('role')
@@ -371,18 +414,100 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             return;
           }
 
-          // Build the query based on user role
+          // Helper function to apply filters to a query
+          const applyFiltersToQuery = (query: any) => {
+            // Apply role-based filtering
+            if (userData.role !== 'admin' && userData.role !== 'accounts') {
+              query = query.eq('requested_by', authUser.id);
+            }
+
+            // Apply search functionality
+            if (currentSearchTerm && currentSearchTerm.trim() !== '') {
+              const searchValue = currentSearchTerm.trim();
+              
+              // Build multiple OR conditions for text search
+              const textSearchConditions = [
+                `vendor_name.ilike.%${searchValue}%`,
+                `item_description.ilike.%${searchValue}%`,
+                `company_name.ilike.%${searchValue}%`,
+                `company_branch.ilike.%${searchValue}%`,
+                `status.ilike.%${searchValue}%`,
+                `advance_details.ilike.%${searchValue}%`
+              ];
+              
+              // If the search term is a number, also search by serial number
+              if (!isNaN(Number(searchValue))) {
+                textSearchConditions.push(`serial_number.eq.${Number(searchValue)}`);
+              }
+              
+              query = query.or(textSearchConditions.join(','));
+            }
+
+            // Apply overdue invoice filter
+            if (currentFilters.overdueInvoices) {
+              const oneWeekAgo = new Date();
+              oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+              
+              query = query
+                .eq('status', 'processed')
+                .in('advance_details', ['advance', 'advance_(bill/PI)'])
+                .or('invoice_received.is.null,invoice_received.eq.no')
+                .lt('updated_at', oneWeekAgo.toISOString());
+            } else {
+              // Apply other filters
+              if (currentFilters.status && currentFilters.status.length > 0) {
+                query = query.in('status', currentFilters.status);
+              }
+
+              if (currentFilters.dateRange?.start && currentFilters.dateRange?.end) {
+                query = query
+                  .gte('date', currentFilters.dateRange.start)
+                  .lte('date', currentFilters.dateRange.end);
+              }
+
+              if (currentFilters.vendor) {
+                query = query.ilike('vendor_name', `%${currentFilters.vendor}%`);
+              }
+
+              if (currentFilters.company) {
+                query = query.ilike('company_name', `%${currentFilters.company}%`);
+              }
+            }
+
+            return query;
+          };
+
+          // Get total count for pagination
+          let countQuery = supabase
+            .from('payments')
+            .select('*', { count: 'exact', head: true });
+
+          countQuery = applyFiltersToQuery(countQuery);
+          const { count: totalCount, error: countError } = await countQuery;
+
+          if (countError) {
+            console.error('Error fetching count:', countError);
+            handleSupabaseError(countError);
+            return;
+          }
+
+          // Calculate pagination values
+          const totalPages = Math.ceil((totalCount || 0) / currentPageSize);
+          const offset = (currentPage - 1) * currentPageSize;
+
+          // Build the paginated query - ONLY payments table data
           let query = supabase
             .from('payments')
             .select('*');
 
-          // If user is not admin or accounts, only show their own payments
-          if (userData.role !== 'admin' && userData.role !== 'accounts') {
-            query = query.eq('requested_by', authUser.id);
-          }
+          query = applyFiltersToQuery(query);
+
+          // Apply sort options with proper column mapping
+          const dbColumnName = getDbColumnName(currentSortOptions.field);
+          query = query.order(dbColumnName, { ascending: currentSortOptions.direction === 'asc' });
 
           const { data: rows, error } = await query
-            .order('created_at', { ascending: false });
+            .range(offset, offset + currentPageSize - 1);
 
           if (error) {
             console.error('Error fetching payments:', error);
@@ -390,16 +515,27 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             return;
           }
 
+          // Update pagination state
+          set(state => ({
+            pagination: {
+              page: currentPage,
+              pageSize: currentPageSize,
+              totalCount: totalCount || 0,
+              totalPages,
+            }
+          }));
+
           if (!rows || rows.length === 0) {
             set({ 
-              payments: [],
-              filteredPayments: [],
+              payments: forceRefresh ? [] : get().payments,
+              filteredPayments: forceRefresh ? [] : get().filteredPayments,
               isLoading: false,
               dashboardStats: calculateDashboardStats([])
             });
             return;
           }
 
+          // Transform payments with user data but WITHOUT bills and attachments for lightweight loading
           // Extract all unique user IDs to fetch in batch
           const userIds = new Set<string>();
           rows.forEach(row => {
@@ -421,7 +557,6 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             if (usersError) {
               console.error('Error fetching users:', usersError);
             } else {
-              // Cache the fetched users
               users?.forEach(user => {
                 usersCache.set(user.id, user);
               });
@@ -436,66 +571,83 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             }
           });
 
-          // Extract payment IDs for batch fetching bills and attachments
-          const paymentIds = rows.map(row => row.id);
+          const newPayments = rows.map(row => {
+            // Get real user data from cache
+            const requestedByUser = usersMap.get(row.requested_by) || {
+              id: row.requested_by,
+              email: 'unknown@example.com',
+              name: 'Unknown User',
+              role: 'user' as const,
+              company: 'Unknown Company'
+            };
 
-          // Batch fetch all bills and attachments in parallel
-          const [billsResult, attachmentsResult] = await Promise.all([
-            supabase
-              .from('bills')
-              .select('*')
-              .in('payment_id', paymentIds),
-            supabase
-              .from('attachments')
-              .select('*')
-              .in('payment_id', paymentIds)
-          ]);
-
-          if (billsResult.error) {
-            console.error('Error fetching bills:', billsResult.error);
-          }
-
-          if (attachmentsResult.error) {
-            console.error('Error fetching attachments:', attachmentsResult.error);
-          }
-
-          // Group bills and attachments by payment_id for quick lookup
-          const billsMap = new Map<string, any[]>();
-          const attachmentsMap = new Map<string, any[]>();
-
-          billsResult.data?.forEach(bill => {
-            if (!billsMap.has(bill.payment_id)) {
-              billsMap.set(bill.payment_id, []);
+            let approvedByUser = null;
+            if (row.approved_by) {
+              approvedByUser = usersMap.get(row.approved_by) || {
+                id: row.approved_by,
+                email: 'unknown@example.com',
+                name: 'Unknown User',
+                role: 'user' as const,
+                company: 'Unknown Company'
+              };
             }
-            billsMap.get(bill.payment_id)?.push(bill);
+
+            return {
+              id: row.id,
+              serialNumber: row.serial_number,
+              date: row.date,
+              vendorName: row.vendor_name,
+              totalOutstanding: row.total_outstanding,
+              advanceDetails: row.advance_details as 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others',
+              paymentAmount: row.payment_amount,
+              balanceAmount: row.balance_amount,
+              itemDescription: row.item_description,
+              bills: [], // Empty - will be fetched on demand
+              attachments: [], // Empty - will be fetched on demand
+              requestedBy: requestedByUser,
+              approvedBy: approvedByUser,
+              companyName: row.company_name,
+              companyBranch: row.company_branch,
+              bankName: row.bank_name,
+              status: row.status,
+              queryDetails: row.query_details || undefined,
+              lpr: row.lpr || undefined,
+              ioa: row.ioa || undefined,
+              cpp: row.cpp || undefined,
+              invoiceReceived: row.invoice_received || undefined,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at
+            };
           });
 
-          attachmentsResult.data?.forEach(attachment => {
-            if (!attachmentsMap.has(attachment.payment_id)) {
-              attachmentsMap.set(attachment.payment_id, []);
+          // Calculate dashboard stats from all data for first page
+          let allPaymentsForStats = rows;
+          if (currentPage === 1 || forceRefresh) {
+            let statsQuery = supabase
+              .from('payments')
+              .select('*');
+
+            if (userData.role !== 'admin' && userData.role !== 'accounts') {
+              statsQuery = statsQuery.eq('requested_by', authUser.id);
             }
-            attachmentsMap.get(attachment.payment_id)?.push(attachment);
-          });
 
-          // Transform all payments with batched data
-          const payments = await transformPaymentsWithBatchedData(
-            rows,
-            usersMap,
-            billsMap,
-            attachmentsMap
-          );
+            const { data: allRows, error: statsError } = await statsQuery
+              .order('created_at', { ascending: false });
 
-          // Calculate dashboard stats from the same data to avoid another API call
-          const stats = calculateDashboardStats(rows);
-          
+            if (!statsError && allRows) {
+              allPaymentsForStats = allRows;
+            }
+          }
+
+          const stats = calculateDashboardStats(allPaymentsForStats);
+
           set({ 
-            payments,
-            filteredPayments: payments,
+            payments: newPayments,
+            filteredPayments: newPayments,
             isLoading: false,
             dashboardStats: stats
           });
           
-          get().applyFilters();
         } catch (error) {
           console.error('Error in fetchPayments:', error);
           throw error;
@@ -1043,44 +1195,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     get().applyFilters();
   },
   
+  setSearchTerm: (searchTerm: string) => {
+    set(state => ({
+      searchTerm: searchTerm
+    }));
+  },
+  
   applyFilters: () => {
-    const { payments, filterOptions } = get();
-    
-    let filtered = [...payments];
-    
-    // Filter by status
-    if (filterOptions.status.length > 0) {
-      filtered = filtered.filter(payment => 
-        filterOptions.status.includes(payment.status)
-      );
-    }
-    
-    // Filter by date range
-    if (filterOptions.dateRange.start && filterOptions.dateRange.end) {
-      filtered = filtered.filter(payment => {
-        const paymentDate = new Date(payment.date);
-        const startDate = new Date(filterOptions.dateRange.start!);
-        const endDate = new Date(filterOptions.dateRange.end!);
-        
-        return paymentDate >= startDate && paymentDate <= endDate;
-      });
-    }
-    
-    // Filter by vendor
-    if (filterOptions.vendor) {
-      filtered = filtered.filter(payment => 
-        payment.vendorName.toLowerCase().includes(filterOptions.vendor!.toLowerCase())
-      );
-    }
-    
-    // Filter by company
-    if (filterOptions.company) {
-      filtered = filtered.filter(payment => 
-        payment.companyName.toLowerCase().includes(filterOptions.company!.toLowerCase())
-      );
-    }
-    
-    set({ filteredPayments: filtered });
+    // Instead of client-side filtering, trigger a server-side fetch with current filters
+    get().fetchPayments(1, get().pagination.pageSize, true, get().filterOptions, get().sortOptions, get().searchTerm);
   },
   
   exportToExcel: () => {
@@ -1089,26 +1212,196 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
   },
 
   filterOverdueAdvanceInvoices: () => {
-    set(state => {
-      const oneWeekAgo = new Date();
-      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    // Set filter options for overdue invoices and trigger server-side fetch
+    set(state => ({
+      filterOptions: {
+        status: [],
+        dateRange: { start: null, end: null },
+        vendor: null,
+        company: null,
+        overdueInvoices: true,
+      }
+    }));
+    
+    // Trigger server-side fetch with the overdue filter
+    get().fetchPayments(1, get().pagination.pageSize, true, get().filterOptions, get().sortOptions, get().searchTerm);
+  },
 
-      const overduePayments = state.payments.filter(payment => 
-        payment.status === 'processed' &&
-        (payment.advanceDetails === 'advance' || payment.advanceDetails === 'advance_(bill/PI)') &&
-        (!payment.invoiceReceived || payment.invoiceReceived === 'no') &&
-        new Date(payment.updatedAt) < oneWeekAgo
-      );
+  fetchPaymentById: async (id: string) => {
+    set({ isLoading: true });
+    
+    const result = await withNetworkCheck(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('payments')
+          .select('*')
+          .eq('id', id)
+          .single();
 
-      return {
-        filteredPayments: overduePayments,
-        filterOptions: {
-          status: [],
-          dateRange: { start: null, end: null },
-          vendor: null,
-          company: null,
+        if (error) throw error;
+        if (!data) return null;
+
+        const payment = await transformSinglePayment(data);
+        
+        set({ isLoading: false });
+        return payment;
+      } catch (error) {
+        console.error('Error fetching payment by ID:', error);
+        set({ isLoading: false });
+        throw error;
+      }
+    }, 'Failed to fetch payment by ID. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+      return null;
+    }
+
+    return result;
+  },
+
+  fetchDashboardPayments: async () => {
+    try {
+      const result = await withNetworkCheck(async () => {
+        try {
+          // Get the current user's role
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          if (!authUser) {
+            console.log('No authenticated user found');
+            return [];
+          }
+
+          // Get user role (minimal query)
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', authUser.id)
+            .single();
+
+          if (userError) {
+            console.error('Error fetching user role:', userError);
+            return [];
+          }
+
+          // Build query for all payments (no filters)
+          let query = supabase
+            .from('payments')
+            .select('*');
+
+          // Apply role-based filtering only
+          if (userData.role !== 'admin' && userData.role !== 'accounts') {
+            query = query.eq('requested_by', authUser.id);
+          }
+
+          // Get recent payments (limit to 50 for dashboard)
+          const { data: rows, error } = await query
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+          if (error) {
+            console.error('Error fetching dashboard payments:', error);
+            return [];
+          }
+
+          if (!rows || rows.length === 0) {
+            return [];
+          }
+
+          // Extract all unique user IDs to fetch in batch
+          const userIds = new Set<string>();
+          rows.forEach(row => {
+            userIds.add(row.requested_by);
+            if (row.approved_by) {
+              userIds.add(row.approved_by);
+            }
+          });
+
+          // Batch fetch all users
+          const uncachedUserIds = Array.from(userIds).filter(id => !usersCache.has(id));
+          
+          if (uncachedUserIds.length > 0) {
+            const { data: users, error: usersError } = await supabase
+              .from('users')
+              .select('*')
+              .in('id', uncachedUserIds);
+
+            if (usersError) {
+              console.error('Error fetching users:', usersError);
+            } else {
+              users?.forEach(user => {
+                usersCache.set(user.id, user);
+              });
+            }
+          }
+
+          // Create users map for quick lookup
+          const usersMap = new Map();
+          userIds.forEach(id => {
+            if (usersCache.has(id)) {
+              usersMap.set(id, usersCache.get(id));
+            }
+          });
+
+          // Transform payments for dashboard (no bills/attachments needed)
+          const dashboardPayments = rows.map(row => {
+            const requestedByUser = usersMap.get(row.requested_by) || {
+              id: row.requested_by,
+              email: 'unknown@example.com',
+              name: 'Unknown User',
+              role: 'user' as const,
+              company: 'Unknown Company'
+            };
+
+            let approvedByUser = null;
+            if (row.approved_by) {
+              approvedByUser = usersMap.get(row.approved_by) || {
+                id: row.approved_by,
+                email: 'unknown@example.com',
+                name: 'Unknown User',
+                role: 'user' as const,
+                company: 'Unknown Company'
+              };
+            }
+
+            return {
+              id: row.id,
+              serialNumber: row.serial_number,
+              date: row.date,
+              vendorName: row.vendor_name,
+              totalOutstanding: row.total_outstanding,
+              advanceDetails: row.advance_details as 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others',
+              paymentAmount: row.payment_amount,
+              balanceAmount: row.balance_amount,
+              itemDescription: row.item_description,
+              bills: [], // Empty for dashboard
+              attachments: [], // Empty for dashboard
+              requestedBy: requestedByUser,
+              approvedBy: approvedByUser,
+              companyName: row.company_name,
+              companyBranch: row.company_branch,
+              bankName: row.bank_name,
+              status: row.status,
+              queryDetails: row.query_details || undefined,
+              lpr: row.lpr || undefined,
+              ioa: row.ioa || undefined,
+              cpp: row.cpp || undefined,
+              invoiceReceived: row.invoice_received || undefined,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at
+            };
+          });
+
+          return dashboardPayments;
+        } catch (error) {
+          console.error('Error in fetchDashboardPayments:', error);
+          return [];
         }
-      };
-    });
+      }, 'Failed to fetch dashboard payments. Please check your internet connection.');
+
+      return result || [];
+    } catch (error) {
+      console.error('Error fetching dashboard payments:', error);
+      return [];
+    }
   }
 }));

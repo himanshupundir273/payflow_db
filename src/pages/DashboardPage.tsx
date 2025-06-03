@@ -2,6 +2,7 @@ import React, { useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { usePaymentStore } from '../store/paymentStore';
+import { PaymentRequest } from '../types';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import {
@@ -24,12 +25,21 @@ const DashboardPage: React.FC = () => {
     payments,
     setFilterOptions,
     fetchPayments,
+    fetchDashboardPayments,
     fetchDashboardStats,
     dashboardStats,
+    pagination,
+    filterOptions,
+    sortOptions,
+    searchTerm,
     filterOverdueAdvanceInvoices,
   } = usePaymentStore();
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [dashboardPayments, setDashboardPayments] = useState<PaymentRequest[]>(
+    []
+  );
+  const [dashboardLoading, setDashboardLoading] = useState(true);
   const touchStartY = useRef(0);
   const touchEndY = useRef(0);
   const [pullDistance, setPullDistance] = useState(0);
@@ -42,12 +52,38 @@ const DashboardPage: React.FC = () => {
     }
   }, [user]);
 
+  // Fetch dashboard payments (unfiltered) when component loads
+  React.useEffect(() => {
+    const loadDashboardData = async () => {
+      if (user && !isRefreshing) {
+        try {
+          setDashboardLoading(true);
+          const unfilteredPayments = await fetchDashboardPayments();
+          setDashboardPayments(unfilteredPayments);
+        } catch (error) {
+          console.error('Error fetching dashboard payments:', error);
+        } finally {
+          setDashboardLoading(false);
+        }
+      }
+    };
+
+    loadDashboardData();
+  }, [user, isRefreshing, fetchDashboardPayments]);
+
   // Fetch payments when dashboard loads if not already loaded
   React.useEffect(() => {
     if (user && payments.length === 0 && !isRefreshing) {
-      fetchPayments();
+      fetchPayments(1, 10, true, filterOptions, sortOptions);
     }
-  }, [user, payments.length, isRefreshing, fetchPayments]);
+  }, [
+    user,
+    payments.length,
+    isRefreshing,
+    fetchPayments,
+    filterOptions,
+    sortOptions,
+  ]);
 
   // Use stats from store or provide defaults
   const stats = dashboardStats || {
@@ -65,37 +101,47 @@ const DashboardPage: React.FC = () => {
   const recentPayments = useMemo(() => {
     if (user?.role === 'user') {
       // For users, show their own recent payments
-      return payments
+      return dashboardPayments
         .filter((p) => p.requestedBy.id === user.id)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 5);
     } else if (user?.role === 'admin') {
       // For admins, show recent pending payments that need approval
-      return payments
+      return dashboardPayments
         .filter((p) => p.status === 'pending')
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 5);
     } else {
       // For accounts, show recently approved payments that need processing
-      return payments
+      return dashboardPayments
         .filter((p) => p.status === 'approved')
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 5);
     }
-  }, [payments, user]);
+  }, [dashboardPayments, user]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
+    setDashboardLoading(true);
     try {
       if (!(await checkNetworkConnection())) {
         return;
       }
-      // Only call fetchPayments since it now also calculates dashboard stats
-      await fetchPayments();
+      // Refresh both main payments and dashboard payments
+      await fetchPayments(
+        1,
+        pagination.pageSize,
+        true,
+        filterOptions,
+        sortOptions
+      );
+      const unfilteredPayments = await fetchDashboardPayments();
+      setDashboardPayments(unfilteredPayments);
     } catch (error) {
       console.error('Error refreshing payments:', error);
     } finally {
       setIsRefreshing(false);
+      setDashboardLoading(false);
       setPullDistance(0);
     }
   };
@@ -128,6 +174,7 @@ const DashboardPage: React.FC = () => {
       dateRange: { start: null, end: null },
       vendor: null,
       company: null,
+      overdueInvoices: false,
     });
 
     if (user?.role === 'user') {
@@ -157,13 +204,13 @@ const DashboardPage: React.FC = () => {
           break;
       }
 
-      setFilterOptions({ status: statusFilters });
+      setFilterOptions({ status: statusFilters, overdueInvoices: false });
       navigate('/payments');
     } else if (user?.role === 'admin' || user?.role === 'accounts') {
       if (status === 'pending') {
         navigate('/approvals');
       } else if (status === 'approved' && user?.role === 'accounts') {
-        setFilterOptions({ status: ['pending'] });
+        setFilterOptions({ status: ['pending'], overdueInvoices: false });
         navigate('/payments');
       } else {
         let statusFilters: string[] = [];
@@ -189,7 +236,7 @@ const DashboardPage: React.FC = () => {
             break;
         }
 
-        setFilterOptions({ status: statusFilters });
+        setFilterOptions({ status: statusFilters, overdueInvoices: false });
         navigate('/payments');
       }
     }
@@ -411,7 +458,11 @@ const DashboardPage: React.FC = () => {
           </Button>
         </div>
 
-        <PaymentTable payments={recentPayments} showActions={false} />
+        <PaymentTable
+          payments={recentPayments}
+          showActions={false}
+          isLoading={dashboardLoading}
+        />
       </div>
     </div>
   );

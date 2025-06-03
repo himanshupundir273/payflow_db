@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { usePaymentStore } from '../store/paymentStore';
+import { PaymentRequest } from '../types';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import {
@@ -30,23 +31,43 @@ const PaymentDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const {
-    payments,
+    fetchPaymentById,
     approvePayment,
     rejectPayment,
     markAsProcessed,
     raiseQuery,
     updatePayment,
     markInvoiceReceived,
+    isLoading,
   } = usePaymentStore();
+
+  // Local state for the current payment details
+  const [payment, setPayment] = useState<PaymentRequest | null>(null);
   const [isQueryDialogOpen, setIsQueryDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isLoadingPayment, setIsLoadingPayment] = useState(true);
 
-  const payment = useMemo(() => {
-    const foundPayment = payments.find((p) => p.id === id);
-    return foundPayment;
-  }, [payments, id]);
+  // Fetch payment details when component mounts or id changes
+  useEffect(() => {
+    const loadPaymentDetails = async () => {
+      if (!id) return;
+
+      setIsLoadingPayment(true);
+      try {
+        const paymentDetails = await fetchPaymentById(id);
+        setPayment(paymentDetails);
+      } catch (error) {
+        console.error('Error fetching payment details:', error);
+        toast.error('Failed to load payment details');
+      } finally {
+        setIsLoadingPayment(false);
+      }
+    };
+
+    loadPaymentDetails();
+  }, [id, fetchPaymentById]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -108,6 +129,24 @@ const PaymentDetailPage: React.FC = () => {
     fetchSignedUrls();
   }, [payment?.attachments, isOnline]);
 
+  if (isLoadingPayment) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-1 py-8">
+        <Card>
+          <div className="text-center py-6">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <h1 className="text-xl font-medium text-gray-900 mb-2">
+              Loading payment details...
+            </h1>
+            <p className="text-gray-500">
+              Please wait while we fetch the payment information.
+            </p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   if (!payment) {
     return (
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-1 py-8">
@@ -133,17 +172,27 @@ const PaymentDetailPage: React.FC = () => {
   }
 
   const handleApprove = async () => {
-    if (!user) return;
+    if (!user || !payment) return;
     await approvePayment(payment.id, user);
+    // Refresh payment details after approval
+    const updatedPayment = await fetchPaymentById(payment.id);
+    if (updatedPayment) setPayment(updatedPayment);
   };
 
   const handleReject = async () => {
-    if (!user) return;
+    if (!user || !payment) return;
     await rejectPayment(payment.id, user);
+    // Refresh payment details after rejection
+    const updatedPayment = await fetchPaymentById(payment.id);
+    if (updatedPayment) setPayment(updatedPayment);
   };
 
   const handleProcess = async () => {
+    if (!payment) return;
     await markAsProcessed(payment.id);
+    // Refresh payment details after processing
+    const updatedPayment = await fetchPaymentById(payment.id);
+    if (updatedPayment) setPayment(updatedPayment);
   };
 
   const handleQuery = () => {
@@ -151,9 +200,12 @@ const PaymentDetailPage: React.FC = () => {
   };
 
   const handleQuerySubmit = async (query: string) => {
-    if (!user) return;
+    if (!user || !payment) return;
     await raiseQuery(payment.id, user, query);
     setIsQueryDialogOpen(false);
+    // Refresh payment details after raising query
+    const updatedPayment = await fetchPaymentById(payment.id);
+    if (updatedPayment) setPayment(updatedPayment);
   };
 
   const handleUpdate = async () => {
@@ -163,15 +215,22 @@ const PaymentDetailPage: React.FC = () => {
       status: 'pending',
     });
     setIsEditing(false);
+    // Refresh payment details after update
+    const updatedPayment = await fetchPaymentById(payment.id);
+    if (updatedPayment) setPayment(updatedPayment);
   };
 
   const handleMarkInvoiceReceived = async () => {
+    if (!payment) return;
     if (
       window.confirm('Are you sure you want to mark this invoice as received?')
     ) {
       const success = await markInvoiceReceived(payment.id);
       if (success) {
         toast.success('Invoice marked as received successfully');
+        // Refresh payment details after marking invoice received
+        const updatedPayment = await fetchPaymentById(payment.id);
+        if (updatedPayment) setPayment(updatedPayment);
       } else {
         toast.error('Failed to mark invoice as received');
       }

@@ -27,6 +27,22 @@ interface PaymentTableProps {
   onProcess?: (id: string) => void;
   onQuery?: (id: string, query: string) => void;
   onMarkInvoiceReceived?: (id: string) => void;
+  // Server-side pagination props
+  serverPagination?: {
+    currentPage: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+    onPageSizeChange: (pageSize: number) => void;
+    // Add sorting support
+    sortField?: string;
+    sortDirection?: 'asc' | 'desc';
+    onSort?: (field: string, direction: 'asc' | 'desc') => void;
+    // Add search support
+    searchTerm?: string;
+    onSearch?: (searchTerm: string) => void;
+  };
 }
 
 const PaymentTable: React.FC<PaymentTableProps> = ({
@@ -38,14 +54,33 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   onProcess,
   onQuery,
   onMarkInvoiceReceived,
+  serverPagination,
 }) => {
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortField, setSortField] = useState<keyof PaymentRequest>('date');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+
+  // Use server-side search when available, otherwise use local search
+  const [localSearchTerm, setLocalSearchTerm] = useState('');
+
+  // For display purposes, always use localSearchTerm so user sees what they type
+  // The server search term is handled separately through the onSearch callback
+
+  // Use server-side sorting when available, otherwise use local sorting
+  const [localSortField, setLocalSortField] =
+    useState<keyof PaymentRequest>('date');
+  const [localSortDirection, setLocalSortDirection] = useState<'asc' | 'desc'>(
+    'desc'
+  );
+
+  const sortField = serverPagination?.sortField || localSortField;
+  const sortDirection = serverPagination?.sortDirection || localSortDirection;
+
+  const [isSearching, setIsSearching] = useState(false);
+
+  // Use local pagination only if server pagination is not provided
+  const [localCurrentPage, setLocalCurrentPage] = useState(1);
+  const [localPageSize, setLocalPageSize] = useState(5);
+
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -65,20 +100,48 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     paymentId: '',
   });
 
+  // Determine if we're using server-side or client-side pagination
+  const isServerPagination = !!serverPagination;
+  const currentPage = isServerPagination
+    ? serverPagination.currentPage
+    : localCurrentPage;
+  const pageSize = isServerPagination
+    ? serverPagination.pageSize
+    : localPageSize;
+  const totalCount = isServerPagination ? serverPagination.totalCount : 0;
+  const totalPages = isServerPagination ? serverPagination.totalPages : 0;
+
   const handleSort = (field: keyof PaymentRequest) => {
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    if (isServerPagination && serverPagination.onSort) {
+      // Server-side sorting
+      const newDirection =
+        sortField === field && sortDirection === 'asc' ? 'desc' : 'asc';
+      serverPagination.onSort(field as string, newDirection);
     } else {
-      setSortField(field);
-      setSortDirection('asc');
+      // Client-side sorting
+      if (localSortField === field) {
+        setLocalSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setLocalSortField(field);
+        setLocalSortDirection('asc');
+      }
+
+      // Reset to first page when sorting (local pagination only)
+      if (!isServerPagination) {
+        setLocalCurrentPage(1);
+      }
     }
-    setCurrentPage(1); // Reset to first page when sorting
   };
 
   const filteredPayments = payments
     .filter((payment) => {
-      if (!searchTerm) return true;
-      const searchLower = searchTerm.toLowerCase();
+      // Skip client-side search filtering if using server pagination
+      if (isServerPagination) {
+        return true;
+      }
+
+      if (!localSearchTerm) return true;
+      const searchLower = localSearchTerm.toLowerCase();
       return (
         payment.vendorName?.toLowerCase().includes(searchLower) ||
         payment.itemDescription?.toLowerCase().includes(searchLower) ||
@@ -88,7 +151,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
         payment.requestedBy?.name?.toLowerCase().includes(searchLower) ||
         payment.companyName?.toLowerCase().includes(searchLower) ||
         payment.companyBranch?.toLowerCase().includes(searchLower) ||
-        payment.serialNumber?.toString().includes(searchTerm) ||
+        payment.serialNumber?.toString().includes(localSearchTerm) ||
         payment.status?.toLowerCase().includes(searchLower) ||
         payment.advanceDetails
           ?.replace(/_/g, ' ')
@@ -97,9 +160,14 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
       );
     })
     .sort((a, b) => {
+      // Only apply client-side sorting if not using server pagination
+      if (isServerPagination) {
+        return 0; // No client-side sorting needed
+      }
+
       let comparison = 0;
 
-      switch (sortField) {
+      switch (localSortField) {
         case 'serialNumber':
           comparison = a.serialNumber - b.serialNumber;
           break;
@@ -125,27 +193,74 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
           comparison = 0;
       }
 
-      return sortDirection === 'asc' ? comparison : -comparison;
+      return localSortDirection === 'asc' ? comparison : -comparison;
     });
 
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredPayments.length / pageSize);
+  // Client-side pagination calculations (only used when not using server pagination)
+  const clientTotalPages = Math.ceil(filteredPayments.length / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
-  const paginatedPayments = filteredPayments.slice(startIndex, endIndex);
+  const paginatedPayments = isServerPagination
+    ? filteredPayments
+    : filteredPayments.slice(startIndex, endIndex);
+
+  // Calculate display values based on pagination type
+  const displayTotalPages = isServerPagination ? totalPages : clientTotalPages;
+  const displayTotalCount = isServerPagination
+    ? totalCount
+    : filteredPayments.length;
+  const displayStartIndex = isServerPagination
+    ? (currentPage - 1) * pageSize
+    : startIndex;
+  const displayEndIndex = isServerPagination
+    ? Math.min(displayStartIndex + paginatedPayments.length, displayTotalCount)
+    : Math.min(endIndex, filteredPayments.length);
 
   // Reset to first page when search term changes
   React.useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
+    // Handle server-side search with debouncing
+    if (isServerPagination && serverPagination?.onSearch) {
+      // Clear any existing search indicator after a short delay
+      const searchIndicatorTimeout = setTimeout(() => {
+        setIsSearching(false);
+      }, 100);
+
+      // Set up the actual search with longer debounce
+      const debounceTimeout = setTimeout(() => {
+        setIsSearching(true);
+        serverPagination.onSearch!(localSearchTerm);
+
+        // Clear searching state after search is initiated
+        setTimeout(() => setIsSearching(false), 1000);
+      }, 500); // 500ms debounce for less frequent API calls
+
+      // Cleanup function to clear timeouts
+      return () => {
+        clearTimeout(searchIndicatorTimeout);
+        clearTimeout(debounceTimeout);
+      };
+    } else {
+      // Client-side search - reset to first page immediately
+      setLocalCurrentPage(1);
+      setIsSearching(false);
+    }
+  }, [localSearchTerm, isServerPagination, serverPagination?.onSearch]);
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page);
+    if (isServerPagination) {
+      serverPagination.onPageChange(page);
+    } else {
+      setLocalCurrentPage(page);
+    }
   };
 
   const handlePageSizeChange = (newPageSize: number) => {
-    setPageSize(newPageSize);
-    setCurrentPage(1);
+    if (isServerPagination) {
+      serverPagination.onPageSizeChange(newPageSize);
+    } else {
+      setLocalPageSize(newPageSize);
+      setLocalCurrentPage(1);
+    }
   };
 
   const handleRowClick = (payment: PaymentRequest) => {
@@ -218,6 +333,73 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   if (isLoading) {
     return (
       <Card>
+        <div className="mb-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="relative">
+              <Input
+                placeholder="Search payments..."
+                value={localSearchTerm}
+                onChange={(e) => setLocalSearchTerm(e.target.value)}
+                leftIcon={
+                  isSearching ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+                  ) : (
+                    <Search className="h-5 w-5 text-gray-400" />
+                  )
+                }
+                className="max-w-xs"
+                disabled={false}
+              />
+              {localSearchTerm && (
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                  <button
+                    onClick={() => setLocalSearchTerm('')}
+                    className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                    type="button"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <label htmlFor="pageSize" className="text-sm text-gray-500">
+                  Show:
+                </label>
+                <select
+                  id="pageSize"
+                  value={pageSize}
+                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                  className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  disabled={isLoading}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                </select>
+                <span className="text-sm text-gray-500">entries</span>
+              </div>
+              <div className="flex items-center space-x-2 text-sm text-gray-500">
+                <Filter className="h-4 w-4" />
+                <span>Loading...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-gray-200 rounded w-1/4"></div>
           <div className="h-64 bg-gray-200 rounded"></div>
@@ -231,13 +413,45 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
       <Card>
         <div className="mb-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <Input
-              placeholder="Search payments..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              leftIcon={<Search className="h-5 w-5 text-gray-400" />}
-              className="max-w-xs"
-            />
+            <div className="relative">
+              <Input
+                placeholder="Search payments..."
+                value={localSearchTerm}
+                onChange={(e) => setLocalSearchTerm(e.target.value)}
+                leftIcon={
+                  isSearching ? (
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+                  ) : (
+                    <Search className="h-5 w-5 text-gray-400" />
+                  )
+                }
+                className="max-w-xs"
+                disabled={false}
+              />
+              {localSearchTerm && (
+                <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                  <button
+                    onClick={() => setLocalSearchTerm('')}
+                    className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                    type="button"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <label htmlFor="pageSize" className="text-sm text-gray-500">
@@ -252,24 +466,24 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   <option value={5}>5</option>
                   <option value={10}>10</option>
                   <option value={25}>25</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
                 </select>
                 <span className="text-sm text-gray-500">entries</span>
               </div>
               <div className="flex items-center space-x-2 text-sm text-gray-500">
                 <Filter className="h-4 w-4" />
                 <span>
-                  Showing {filteredPayments.length > 0 ? startIndex + 1 : 0}-
-                  {Math.min(endIndex, filteredPayments.length)} of{' '}
-                  {filteredPayments.length} payments
+                  {isSearching
+                    ? 'Searching...'
+                    : `Showing ${
+                        displayStartIndex + 1
+                      }-${displayEndIndex} of ${displayTotalCount} payments`}
                 </span>
               </div>
             </div>
           </div>
         </div>
 
-        {filteredPayments.length === 0 ? (
+        {paginatedPayments.length === 0 ? (
           <div className="text-center py-8">
             <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-gray-100">
               <Search className="h-6 w-6 text-gray-400" />
@@ -278,13 +492,13 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
               No payments found
             </h3>
             <p className="mt-1 text-sm text-gray-500">
-              {searchTerm
+              {localSearchTerm
                 ? 'No payments match your search criteria. Try adjusting your search term.'
                 : 'No payments have been requested yet'}
             </p>
-            {searchTerm && (
+            {localSearchTerm && (
               <button
-                onClick={() => setSearchTerm('')}
+                onClick={() => setLocalSearchTerm('')}
                 className="mt-3 inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-primary-600 bg-primary-100 hover:bg-primary-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               >
                 Clear search
@@ -499,7 +713,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
             </div>
 
             {/* Pagination Controls */}
-            {totalPages > 1 && (
+            {displayTotalPages > 1 && (
               <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 mt-4">
                 <div className="flex flex-1 justify-between sm:hidden">
                   <Button
@@ -514,7 +728,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={() => handlePageChange(currentPage + 1)}
-                    disabled={currentPage === totalPages}
+                    disabled={currentPage === displayTotalPages}
                   >
                     Next
                   </Button>
@@ -523,14 +737,12 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   <div>
                     <p className="text-sm text-gray-700">
                       Showing{' '}
-                      <span className="font-medium">{startIndex + 1}</span> to{' '}
                       <span className="font-medium">
-                        {Math.min(endIndex, filteredPayments.length)}
+                        {displayStartIndex + 1}
                       </span>{' '}
+                      to <span className="font-medium">{displayEndIndex}</span>{' '}
                       of{' '}
-                      <span className="font-medium">
-                        {filteredPayments.length}
-                      </span>{' '}
+                      <span className="font-medium">{displayTotalCount}</span>{' '}
                       results
                     </p>
                   </div>
@@ -549,52 +761,52 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                       </button>
 
                       {/* Page Numbers */}
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                        (page) => {
-                          // Show first page, last page, current page, and pages around current page
-                          const showPage =
-                            page === 1 ||
-                            page === totalPages ||
-                            (page >= currentPage - 1 &&
-                              page <= currentPage + 1);
+                      {Array.from(
+                        { length: displayTotalPages },
+                        (_, i) => i + 1
+                      ).map((page) => {
+                        // Show first page, last page, current page, and pages around current page
+                        const showPage =
+                          page === 1 ||
+                          page === displayTotalPages ||
+                          (page >= currentPage - 1 && page <= currentPage + 1);
 
-                          if (!showPage) {
-                            // Show ellipsis for gaps
-                            if (
-                              page === currentPage - 2 ||
-                              page === currentPage + 2
-                            ) {
-                              return (
-                                <span
-                                  key={page}
-                                  className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300"
-                                >
-                                  ...
-                                </span>
-                              );
-                            }
-                            return null;
+                        if (!showPage) {
+                          // Show ellipsis for gaps
+                          if (
+                            page === currentPage - 2 ||
+                            page === currentPage + 2
+                          ) {
+                            return (
+                              <span
+                                key={page}
+                                className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300"
+                              >
+                                ...
+                              </span>
+                            );
                           }
-
-                          return (
-                            <button
-                              key={page}
-                              onClick={() => handlePageChange(page)}
-                              className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
-                                page === currentPage
-                                  ? 'z-10 bg-primary-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
-                                  : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
-                              }`}
-                            >
-                              {page}
-                            </button>
-                          );
+                          return null;
                         }
-                      )}
+
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => handlePageChange(page)}
+                            className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
+                              page === currentPage
+                                ? 'z-10 bg-primary-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
+                                : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      })}
 
                       <button
                         onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages}
+                        disabled={currentPage === displayTotalPages}
                         className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <span className="sr-only">Next</span>

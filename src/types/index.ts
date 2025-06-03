@@ -63,4 +63,5 @@ export interface FilterOptions {
   };
   vendor: string | null;
   company: string | null;
+  overdueInvoices: boolean;
 }

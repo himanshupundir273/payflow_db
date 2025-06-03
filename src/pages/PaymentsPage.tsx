@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { usePaymentStore } from '../store/paymentStore';
@@ -13,6 +13,10 @@ const PaymentsPage: React.FC = () => {
     payments,
     filteredPayments,
     isLoading,
+    pagination,
+    sortOptions,
+    searchTerm,
+    fetchPayments,
     approvePayment,
     rejectPayment,
     markAsProcessed,
@@ -20,11 +24,19 @@ const PaymentsPage: React.FC = () => {
     raiseQuery,
     filterOptions,
     setFilterOptions,
+    setSearchTerm,
   } = usePaymentStore();
   const navigate = useNavigate();
 
   const [showFilters, setShowFilters] = useState(false);
   const [pageTitle, setPageTitle] = useState('Payment Requests');
+
+  // Fetch payments when component mounts
+  React.useEffect(() => {
+    if (user && payments.length === 0) {
+      fetchPayments(1, 10, true);
+    }
+  }, [user, fetchPayments]);
 
   const statusOptions = [
     { value: 'all', label: 'All Statuses' },
@@ -35,27 +47,159 @@ const PaymentsPage: React.FC = () => {
     { value: 'query_raised', label: 'Query Raised' },
   ];
 
+  const handlePageChange = useCallback(
+    (page: number) => {
+      fetchPayments(
+        page,
+        pagination.pageSize,
+        true,
+        filterOptions,
+        sortOptions,
+        searchTerm
+      );
+    },
+    [fetchPayments, pagination.pageSize, filterOptions, sortOptions, searchTerm]
+  );
+
+  const handlePageSizeChange = useCallback(
+    (pageSize: number) => {
+      fetchPayments(1, pageSize, true, filterOptions, sortOptions, searchTerm);
+    },
+    [fetchPayments, filterOptions, sortOptions, searchTerm]
+  );
+
+  const handleSort = useCallback(
+    (field: string, direction: 'asc' | 'desc') => {
+      const newSortOptions = { field, direction };
+      fetchPayments(
+        1,
+        pagination.pageSize,
+        true,
+        filterOptions,
+        newSortOptions,
+        searchTerm
+      );
+    },
+    [fetchPayments, pagination.pageSize, filterOptions, searchTerm]
+  );
+
+  const handleSearch = useCallback(
+    (newSearchTerm: string) => {
+      setSearchTerm(newSearchTerm);
+      fetchPayments(
+        1,
+        pagination.pageSize,
+        true,
+        filterOptions,
+        sortOptions,
+        newSearchTerm
+      );
+    },
+    [
+      setSearchTerm,
+      fetchPayments,
+      pagination.pageSize,
+      filterOptions,
+      sortOptions,
+    ]
+  );
+
+  // Memoize serverPagination object to prevent unnecessary re-renders
+  const serverPaginationConfig = useMemo(
+    () => ({
+      currentPage: pagination.page,
+      pageSize: pagination.pageSize,
+      totalCount: pagination.totalCount,
+      totalPages: pagination.totalPages,
+      onPageChange: handlePageChange,
+      onPageSizeChange: handlePageSizeChange,
+      sortField: sortOptions.field,
+      sortDirection: sortOptions.direction,
+      onSort: handleSort,
+      searchTerm: searchTerm,
+      onSearch: handleSearch,
+    }),
+    [
+      pagination.page,
+      pagination.pageSize,
+      pagination.totalCount,
+      pagination.totalPages,
+      handlePageChange,
+      handlePageSizeChange,
+      sortOptions.field,
+      sortOptions.direction,
+      handleSort,
+      searchTerm,
+      handleSearch,
+    ]
+  );
+
   const handleApprove = async (id: string) => {
     if (!user) return;
     await approvePayment(id, user);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
 
   const handleReject = async (id: string) => {
     if (!user) return;
     await rejectPayment(id, user);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
 
   const handleProcess = async (id: string) => {
     await markAsProcessed(id);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
 
   const handleQuery = async (id: string, query: string) => {
     if (!user) return;
     await raiseQuery(id, user, query);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
 
   const handleMarkInvoiceReceived = async (id: string) => {
     await markInvoiceReceived(id);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
 
   const handleStatusFilterChange = (status: string) => {
@@ -86,6 +230,7 @@ const PaymentsPage: React.FC = () => {
       dateRange: { start: null, end: null },
       vendor: null,
       company: null,
+      overdueInvoices: false,
     });
   };
 
@@ -94,9 +239,11 @@ const PaymentsPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{pageTitle}</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {filteredPayments.length} payments found
-          </p>
+          {!isLoading && (
+            <p className="mt-1 text-sm text-gray-500">
+              {pagination.totalCount} payments found
+            </p>
+          )}
         </div>
         <div className="flex flex-col space-y-3 mt-4 md:mt-0 md:flex-row md:space-y-0 md:space-x-3">
           <Button
@@ -177,14 +324,15 @@ const PaymentsPage: React.FC = () => {
       <PaymentTable
         payments={filteredPayments}
         isLoading={isLoading}
-        showActions={user?.role === 'admin' || user?.role === 'accounts'}
-        onApprove={handleApprove}
-        onReject={handleReject}
-        onProcess={handleProcess}
-        onQuery={handleQuery}
+        showActions={true}
+        onApprove={user?.role === 'admin' ? handleApprove : undefined}
+        onReject={user?.role === 'admin' ? handleReject : undefined}
+        onProcess={user?.role === 'accounts' ? handleProcess : undefined}
+        onQuery={user?.role === 'admin' ? handleQuery : undefined}
         onMarkInvoiceReceived={
           user?.role === 'accounts' ? handleMarkInvoiceReceived : undefined
         }
+        serverPagination={serverPaginationConfig}
       />
     </div>
   );
