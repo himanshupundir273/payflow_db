@@ -21,6 +21,8 @@ const ApprovalsPage: React.FC = () => {
     setSearchTerm,
     approvePayment,
     rejectPayment,
+    bulkApprovePayments,
+    bulkRejectPayments,
     markAsProcessed,
     markInvoiceReceived,
     raiseQuery,
@@ -209,6 +211,50 @@ const ApprovalsPage: React.FC = () => {
     );
   };
 
+  const handleBulkApprove = async (ids: string[]) => {
+    if (!user) return;
+    const result = await bulkApprovePayments(ids, user);
+
+    if (result.success.length > 0) {
+      console.log(`Successfully approved ${result.success.length} payments`);
+    }
+    if (result.failed.length > 0) {
+      console.error(`Failed to approve ${result.failed.length} payments`);
+    }
+
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
+  };
+
+  const handleBulkReject = async (ids: string[]) => {
+    if (!user) return;
+    const result = await bulkRejectPayments(ids, user);
+
+    if (result.success.length > 0) {
+      console.log(`Successfully rejected ${result.success.length} payments`);
+    }
+    if (result.failed.length > 0) {
+      console.error(`Failed to reject ${result.failed.length} payments`);
+    }
+
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
+  };
+
   const handleProcess = async (
     id: string,
     invoiceReceived: 'yes' | 'no',
@@ -353,6 +399,10 @@ const ApprovalsPage: React.FC = () => {
         showActions={true}
         onApprove={user?.role === 'admin' ? handleApprove : undefined}
         onReject={user?.role === 'admin' ? handleReject : undefined}
+        onBulkApprove={user?.role === 'admin' ? handleBulkApprove : undefined}
+        onBulkReject={user?.role === 'admin' ? handleBulkReject : undefined}
+        enableBulkSelection={user?.role === 'admin'}
+        maxSelections={10}
         onProcess={user?.role === 'accounts' ? handleProcess : undefined}
         onQuery={user?.role === 'admin' ? handleQuery : undefined}
         onAccountsQuery={

@@ -51,6 +51,8 @@ interface PaymentState {
   addPayment: (payment: Omit<PaymentRequest, 'id' | 'serialNumber' | 'status' | 'createdAt' | 'updatedAt' | 'approvedBy'>) => Promise<PaymentRequest | null>;
   approvePayment: (id: string, approver: User) => Promise<void>;
   rejectPayment: (id: string, approver: User) => Promise<void>;
+  bulkApprovePayments: (ids: string[], approver: User) => Promise<{success: string[], failed: string[]}>;
+  bulkRejectPayments: (ids: string[], approver: User) => Promise<{success: string[], failed: string[]}>;
   markAsProcessed: (id: string, invoiceReceived?: 'yes' | 'no', paymentAmount?: number) => Promise<void>;
   markInvoiceReceived: (id: string) => Promise<boolean>;
   raiseQuery: (id: string, approver: User, query: string) => Promise<boolean>;
@@ -909,6 +911,96 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     if (!result) {
       set({ isLoading: false });
     }
+  },
+  
+  bulkApprovePayments: async (ids: string[], approver: User) => {
+    set({ isLoading: true });
+    
+    const result = await withNetworkCheck(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('payments')
+          .update({ 
+            status: 'approved',
+            approved_by: approver.id
+          })
+          .in('id', ids)
+          .select();
+
+        if (error) {
+          handleSupabaseError(error);
+          return { success: [], failed: ids };
+        }
+
+        const transformedPayments = await Promise.all(data.map((payment: any) => transformSinglePayment(payment)));
+        
+        set(state => ({
+          payments: state.payments.map(p => {
+            const transformedPayment = transformedPayments.find(tp => tp.id === p.id);
+            return transformedPayment || p;
+          }),
+          isLoading: false
+        }));
+        
+        get().applyFilters();
+        return { success: ids, failed: [] };
+      } catch (error) {
+        console.error('Error bulk approving payments:', error);
+        return { success: [], failed: ids };
+      }
+    }, 'Failed to bulk approve payments. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+      return { success: [], failed: ids };
+    }
+
+    return result;
+  },
+  
+  bulkRejectPayments: async (ids: string[], approver: User) => {
+    set({ isLoading: true });
+    
+    const result = await withNetworkCheck(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('payments')
+          .update({ 
+            status: 'rejected',
+            approved_by: approver.id
+          })
+          .in('id', ids)
+          .select();
+
+        if (error) {
+          handleSupabaseError(error);
+          return { success: [], failed: ids };
+        }
+
+        const transformedPayments = await Promise.all(data.map((payment: any) => transformSinglePayment(payment)));
+        
+        set(state => ({
+          payments: state.payments.map(p => {
+            const transformedPayment = transformedPayments.find(tp => tp.id === p.id);
+            return transformedPayment || p;
+          }),
+          isLoading: false
+        }));
+        
+        get().applyFilters();
+        return { success: ids, failed: [] };
+      } catch (error) {
+        console.error('Error bulk rejecting payments:', error);
+        return { success: [], failed: ids };
+      }
+    }, 'Failed to bulk reject payments. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+      return { success: [], failed: ids };
+    }
+
+    return result;
   },
   
   markAsProcessed: async (id: string, invoiceReceived?: 'yes' | 'no', paymentAmount?: number) => {

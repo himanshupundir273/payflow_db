@@ -26,6 +26,8 @@ interface PaymentTableProps {
   showActions?: boolean;
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
+  onBulkApprove?: (ids: string[]) => void;
+  onBulkReject?: (ids: string[]) => void;
   onProcess?: (
     id: string,
     invoiceReceived: 'yes' | 'no',
@@ -34,6 +36,8 @@ interface PaymentTableProps {
   onQuery?: (id: string, query: string) => void;
   onAccountsQuery?: (id: string, query: string) => void;
   onMarkInvoiceReceived?: (id: string) => void;
+  enableBulkSelection?: boolean;
+  maxSelections?: number;
   // Server-side pagination props
   serverPagination?: {
     currentPage: number;
@@ -58,10 +62,14 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   showActions = false,
   onApprove,
   onReject,
+  onBulkApprove,
+  onBulkReject,
   onProcess,
   onQuery,
   onAccountsQuery,
   onMarkInvoiceReceived,
+  enableBulkSelection = false,
+  maxSelections = 0,
   serverPagination,
 }) => {
   const { user } = useAuthStore();
@@ -125,6 +133,12 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     paymentId: '',
     currentPaymentAmount: 0,
   });
+
+  // Bulk selection state
+  const [selectedPayments, setSelectedPayments] = useState<Set<string>>(
+    new Set()
+  );
+  const [showBulkActions, setShowBulkActions] = useState(false);
 
   // Determine if we're using server-side or client-side pagination
   const isServerPagination = !!serverPagination;
@@ -358,6 +372,73 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     });
   };
 
+  // Selection handlers
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      // Only select eligible payments (pending status for admin)
+      const eligiblePayments = paginatedPayments
+        .filter(
+          (payment) => user?.role === 'admin' && payment.status === 'pending'
+        )
+        .slice(0, maxSelections || 10)
+        .map((payment) => payment.id);
+      setSelectedPayments(new Set(eligiblePayments));
+    } else {
+      setSelectedPayments(new Set());
+    }
+  };
+
+  const handleSelectPayment = (paymentId: string, checked: boolean) => {
+    setSelectedPayments((prev) => {
+      const newSelection = new Set(prev);
+      if (
+        checked &&
+        (maxSelections === 0 || newSelection.size < maxSelections)
+      ) {
+        newSelection.add(paymentId);
+      } else if (!checked) {
+        newSelection.delete(paymentId);
+      }
+      return newSelection;
+    });
+  };
+
+  const handleBulkApprove = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Bulk Approve Payments',
+      message: `Are you sure you want to approve ${selectedPayments.size} payment(s)?`,
+      action: () => {
+        onBulkApprove?.(Array.from(selectedPayments));
+        setSelectedPayments(new Set());
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const handleBulkReject = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Bulk Reject Payments',
+      message: `Are you sure you want to reject ${selectedPayments.size} payment(s)?`,
+      action: () => {
+        onBulkReject?.(Array.from(selectedPayments));
+        setSelectedPayments(new Set());
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  // Show/hide bulk actions based on selection
+  React.useEffect(() => {
+    setShowBulkActions(selectedPayments.size > 0);
+  }, [selectedPayments]);
+
+  // Clear selections when payments change (e.g., after operations)
+  React.useEffect(() => {
+    setSelectedPayments(new Set());
+  }, [payments]);
+
   const getSortIcon = (field: keyof PaymentRequest) => {
     if (sortField !== field)
       return <ChevronDown className="h-4 w-4 text-gray-400" />;
@@ -521,6 +602,66 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
           </div>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {enableBulkSelection && showBulkActions && user?.role === 'admin' && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 mb-4 shadow-sm">
+            <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
+              {/* Selection Info */}
+              <div className="flex flex-col space-y-1 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-3">
+                <span className="text-sm font-medium text-blue-900">
+                  {selectedPayments.size} payment
+                  {selectedPayments.size !== 1 ? 's' : ''} selected
+                </span>
+                {maxSelections > 0 && (
+                  <span className="text-xs text-blue-700">
+                    Max {maxSelections} selections allowed
+                  </span>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-2">
+                <div className="flex space-x-2">
+                  <Button
+                    size="sm"
+                    variant="success"
+                    onClick={handleBulkApprove}
+                    disabled={selectedPayments.size === 0}
+                    className="flex-1 sm:flex-none text-xs sm:text-sm"
+                  >
+                    <span className="hidden sm:inline">Approve Selected</span>
+                    <span className="sm:hidden">
+                      Approve ({selectedPayments.size})
+                    </span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={handleBulkReject}
+                    disabled={selectedPayments.size === 0}
+                    className="flex-1 sm:flex-none text-xs sm:text-sm"
+                  >
+                    <span className="hidden sm:inline">Reject Selected</span>
+                    <span className="sm:hidden">
+                      Reject ({selectedPayments.size})
+                    </span>
+                  </Button>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSelectedPayments(new Set())}
+                  disabled={selectedPayments.size === 0}
+                  className="w-full sm:w-auto text-xs sm:text-sm"
+                >
+                  <span className="hidden sm:inline">Clear Selection</span>
+                  <span className="sm:hidden">Clear</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {paginatedPayments.length === 0 ? (
           <div className="text-center py-8">
             <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-gray-100">
@@ -551,6 +692,27 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
+                        {enableBulkSelection && user?.role === 'admin' && (
+                          <th
+                            scope="col"
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              checked={
+                                selectedPayments.size > 0 &&
+                                selectedPayments.size ===
+                                  paginatedPayments.filter(
+                                    (p) => p.status === 'pending'
+                                  ).length
+                              }
+                              onChange={(e) =>
+                                handleSelectAll(e.target.checked)
+                              }
+                            />
+                          </th>
+                        )}
                         <th
                           scope="col"
                           className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
@@ -640,6 +802,32 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                           onClick={() => handleRowClick(payment)}
                         >
+                          {enableBulkSelection && user?.role === 'admin' && (
+                            <td
+                              className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                checked={selectedPayments.has(payment.id)}
+                                disabled={
+                                  payment.status !== 'pending' ||
+                                  (maxSelections > 0 &&
+                                    selectedPayments.size >= maxSelections &&
+                                    !selectedPayments.has(payment.id))
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectPayment(
+                                    payment.id,
+                                    e.target.checked
+                                  );
+                                }}
+                              />
+                            </td>
+                          )}
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {payment.serialNumber}
                           </td>
@@ -781,7 +969,8 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
             {/* Pagination Controls */}
             {displayTotalPages > 1 && (
               <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6 mt-4">
-                <div className="flex flex-1 justify-between sm:hidden">
+                {/* Mobile Pagination - Previous/Next with page numbers */}
+                <div className="flex flex-1 justify-between md:hidden">
                   <Button
                     variant="outline"
                     size="sm"
@@ -790,6 +979,64 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   >
                     Previous
                   </Button>
+
+                  {/* Mobile Page Numbers */}
+                  <div className="flex items-center space-x-1">
+                    {Array.from(
+                      { length: displayTotalPages },
+                      (_, i) => i + 1
+                    ).map((page) => {
+                      // For mobile, show fewer pages to save space
+                      const showPage =
+                        page === 1 ||
+                        page === displayTotalPages ||
+                        page === currentPage ||
+                        (page >= currentPage - 1 && page <= currentPage + 1);
+
+                      if (!showPage) {
+                        // Show ellipsis for gaps (only one ellipsis per gap)
+                        if (page === currentPage - 2 && currentPage > 3) {
+                          return (
+                            <span
+                              key={page}
+                              className="px-1 text-xs text-gray-500"
+                            >
+                              ...
+                            </span>
+                          );
+                        }
+                        if (
+                          page === currentPage + 2 &&
+                          currentPage < displayTotalPages - 2
+                        ) {
+                          return (
+                            <span
+                              key={page}
+                              className="px-1 text-xs text-gray-500"
+                            >
+                              ...
+                            </span>
+                          );
+                        }
+                        return null;
+                      }
+
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => handlePageChange(page)}
+                          className={`w-8 h-8 text-xs font-medium rounded ${
+                            page === currentPage
+                              ? 'bg-primary-600 text-white'
+                              : 'text-gray-700 hover:bg-gray-50 border border-gray-300'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   <Button
                     variant="outline"
                     size="sm"
@@ -799,7 +1046,9 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                     Next
                   </Button>
                 </div>
-                <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+
+                {/* Desktop Pagination - Full pagination with page numbers */}
+                <div className="hidden md:flex md:flex-1 md:items-center md:justify-between">
                   <div>
                     <p className="text-sm text-gray-700">
                       Showing{' '}
@@ -826,7 +1075,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         <ChevronLeft className="h-5 w-5" aria-hidden="true" />
                       </button>
 
-                      {/* Page Numbers */}
+                      {/* Page Numbers - Only shown on desktop */}
                       {Array.from(
                         { length: displayTotalPages },
                         (_, i) => i + 1
