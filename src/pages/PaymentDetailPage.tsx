@@ -478,6 +478,12 @@ const PaymentDetailPage: React.FC = () => {
                       {payment.bankName || 'Not specified'}
                     </span>
                   </div>
+                  <div className="flex flex-col sm:flex-row justify-between">
+                    <span className="text-sm text-gray-500">Payment Mode:</span>
+                    <span className="text-sm font-medium capitalize">
+                      {payment.paymentMode?.replace('_', ' ') || 'Net Banking'}
+                    </span>
+                  </div>
                   {/* Optional fields - only show if they have values */}
                   {payment.lpr && (
                     <div className="flex flex-col sm:flex-row justify-between">

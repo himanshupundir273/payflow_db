@@ -6,6 +6,16 @@ export interface User {
   email: string;
   role: UserRole;
   company: string;
+  createdAt: string;
+}
+
+export interface Vendor {
+  id: string;
+  name: string;
+  accountNumber: string;
+  ifscCode: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Bill {
@@ -45,6 +55,7 @@ export interface PaymentRequest {
   companyName: string;
   companyBranch: string;
   bankName: string;
+  paymentMode: 'net_banking' | 'upi';
   status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised';
   queryDetails?: string;
   accountsQuery?: string;
@@ -52,6 +63,7 @@ export interface PaymentRequest {
   ioa?: string | null;
   cpp?: string | null;
   invoiceReceived?: 'yes' | 'no' | null;
+  startingAmount?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -65,4 +77,5 @@ export interface FilterOptions {
   vendor: string | null;
   company: string | null;
   overdueInvoices: boolean;
+  hasAccountsQuery: boolean;
 }

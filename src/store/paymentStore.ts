@@ -61,6 +61,7 @@ interface PaymentState {
   exportToExcel: () => void;
   updatePayment: (id: string, paymentData: Partial<PaymentRequest>) => Promise<boolean>;
   filterOverdueAdvanceInvoices: () => void;
+  filterAccountsQueries: () => void;
 }
 
 // Cache for users to avoid repeated fetches
@@ -220,6 +221,7 @@ const transformSinglePayment = async (row: PaymentRow): Promise<PaymentRequest> 
       companyName: row.company_name,
       companyBranch: row.company_branch,
       bankName: row.bank_name,
+      paymentMode: row.payment_mode as 'net_banking' | 'upi',
       status: row.status,
       queryDetails: row.query_details || undefined,
       accountsQuery: row.accounts_query || undefined,
@@ -227,6 +229,7 @@ const transformSinglePayment = async (row: PaymentRow): Promise<PaymentRequest> 
       ioa: row.ioa || undefined,
       cpp: row.cpp || undefined,
       invoiceReceived: row.invoice_received || undefined,
+      startingAmount: row.starting_amount || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -303,6 +306,7 @@ const transformPaymentsWithBatchedData = async (
       companyName: row.company_name,
       companyBranch: row.company_branch,
       bankName: row.bank_name,
+      paymentMode: row.payment_mode as 'net_banking' | 'upi',
       status: row.status,
       queryDetails: row.query_details || undefined,
       accountsQuery: row.accounts_query || undefined,
@@ -310,6 +314,7 @@ const transformPaymentsWithBatchedData = async (
       ioa: row.ioa || undefined,
       cpp: row.cpp || undefined,
       invoiceReceived: row.invoice_received || undefined,
+      startingAmount: row.starting_amount || undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -329,6 +334,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     vendor: null,
     company: null,
     overdueInvoices: false,
+    hasAccountsQuery: false,
   },
   dashboardStats: null,
   pagination: {
@@ -478,6 +484,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               if (currentFilters.company) {
                 query = query.ilike('company_name', `%${currentFilters.company}%`);
               }
+
+              // Apply accounts query filter
+              if (currentFilters.hasAccountsQuery) {
+                query = query.not('accounts_query', 'is', null);
+              }
             }
 
             return query;
@@ -615,6 +626,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               companyName: row.company_name,
               companyBranch: row.company_branch,
               bankName: row.bank_name,
+              paymentMode: row.payment_mode as 'net_banking' | 'upi',
               status: row.status,
               queryDetails: row.query_details || undefined,
               accountsQuery: row.accounts_query || undefined,
@@ -622,6 +634,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               ioa: row.ioa || undefined,
               cpp: row.cpp || undefined,
               invoiceReceived: row.invoice_received || undefined,
+              startingAmount: row.starting_amount || undefined,
               createdAt: row.created_at,
               updatedAt: row.updated_at
             };
@@ -722,6 +735,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           company_name: paymentData.companyName,
           company_branch: paymentData.companyBranch,
           bank_name: paymentData.bankName,
+          payment_mode: paymentData.paymentMode,
           status: 'pending',
           lpr: paymentData.lpr,
           ioa: paymentData.ioa,
@@ -902,10 +916,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     
     const result = await withNetworkCheck(async () => {
       try {
-        // First get the current payment to access total outstanding
+        // First get the current payment to access total outstanding and current payment amount
         const { data: currentPayment, error: fetchError } = await supabase
           .from('payments')
-          .select('total_outstanding, payment_amount')
+          .select('total_outstanding, payment_amount, status')
           .eq('id', id)
           .single();
 
@@ -921,7 +935,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           updateData.invoice_received = invoiceReceived;
         }
         
-        if (paymentAmount !== undefined) {
+        // Only update starting_amount when processing an approved payment and the amount is different
+        if (paymentAmount !== undefined && currentPayment.status === 'approved') {
+          // Check if the new payment amount is different from the current payment amount
+          if (paymentAmount !== currentPayment.payment_amount) {
+            // Store the current payment amount as starting_amount
+            updateData.starting_amount = currentPayment.payment_amount;
+          }
+          
+          // Update to the new payment amount
           updateData.payment_amount = paymentAmount;
           // Recalculate balance amount when payment amount changes
           updateData.balance_amount = currentPayment.total_outstanding - paymentAmount;
@@ -1165,6 +1187,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             company_name: paymentData.companyName,
             company_branch: paymentData.companyBranch,
             bank_name: paymentData.bankName,
+            payment_mode: paymentData.paymentMode,
             status: existingPayment.status === 'query_raised' ? 'pending' : existingPayment.status,
             lpr: paymentData.lpr,
             ioa: paymentData.ioa,
@@ -1337,10 +1360,28 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         vendor: null,
         company: null,
         overdueInvoices: true,
+        hasAccountsQuery: false,
       }
     }));
     
     // Trigger server-side fetch with the overdue filter
+    get().fetchPayments(1, get().pagination.pageSize, true, get().filterOptions, get().sortOptions, get().searchTerm);
+  },
+
+  filterAccountsQueries: () => {
+    // Set filter options for accounts queries and trigger server-side fetch
+    set(state => ({
+      filterOptions: {
+        status: ['approved'], // Only approved payments can have accounts queries
+        dateRange: { start: null, end: null },
+        vendor: null,
+        company: null,
+        overdueInvoices: false,
+        hasAccountsQuery: true,
+      }
+    }));
+    
+    // Trigger server-side fetch with the accounts query filter
     get().fetchPayments(1, get().pagination.pageSize, true, get().filterOptions, get().sortOptions, get().searchTerm);
   },
 
@@ -1497,6 +1538,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               companyName: row.company_name,
               companyBranch: row.company_branch,
               bankName: row.bank_name,
+              paymentMode: row.payment_mode as 'net_banking' | 'upi',
               status: row.status,
               queryDetails: row.query_details || undefined,
               accountsQuery: row.accounts_query || undefined,
@@ -1504,6 +1546,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               ioa: row.ioa || undefined,
               cpp: row.cpp || undefined,
               invoiceReceived: row.invoice_received || undefined,
+              startingAmount: row.starting_amount || undefined,
               createdAt: row.created_at,
               updatedAt: row.updated_at
             };

@@ -33,6 +33,7 @@ const DashboardPage: React.FC = () => {
     sortOptions,
     searchTerm,
     filterOverdueAdvanceInvoices,
+    filterAccountsQueries,
   } = usePaymentStore();
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -176,6 +177,7 @@ const DashboardPage: React.FC = () => {
       vendor: null,
       company: null,
       overdueInvoices: false,
+      hasAccountsQuery: false,
     });
 
     if (user?.role === 'user') {
@@ -205,13 +207,21 @@ const DashboardPage: React.FC = () => {
           break;
       }
 
-      setFilterOptions({ status: statusFilters, overdueInvoices: false });
+      setFilterOptions({
+        status: statusFilters,
+        overdueInvoices: false,
+        hasAccountsQuery: false,
+      });
       navigate('/payments');
     } else if (user?.role === 'admin' || user?.role === 'accounts') {
       if (status === 'pending') {
         navigate('/approvals');
       } else if (status === 'approved' && user?.role === 'accounts') {
-        setFilterOptions({ status: ['pending'], overdueInvoices: false });
+        setFilterOptions({
+          status: ['pending'],
+          overdueInvoices: false,
+          hasAccountsQuery: false,
+        });
         navigate('/payments');
       } else {
         let statusFilters: string[] = [];
@@ -237,7 +247,11 @@ const DashboardPage: React.FC = () => {
             break;
         }
 
-        setFilterOptions({ status: statusFilters, overdueInvoices: false });
+        setFilterOptions({
+          status: statusFilters,
+          overdueInvoices: false,
+          hasAccountsQuery: false,
+        });
         navigate('/payments');
       }
     }
@@ -297,16 +311,10 @@ const DashboardPage: React.FC = () => {
       {(user?.role === 'user' || user?.role === 'admin') &&
         stats.accountsQueriesRaised > 0 && (
           <div
-            className="mb-4 inline-flex items-center px-3 py-2 rounded-lg bg-warning-100 text-warning-800 cursor-pointer hover:bg-warning-200 transition-colors"
+            className="mb-4 inline-flex items-center px-3 py-2 rounded-lg bg-warning-100 text-warning-800 cursor-pointer hover:bg-warning-200 transition-colors lg:ml-2"
             onClick={() => {
-              // Navigate to payments page to show payments with accounts queries
-              setFilterOptions({
-                status: ['approved'], // Accounts queries are on approved payments
-                dateRange: { start: null, end: null },
-                vendor: null,
-                company: null,
-                overdueInvoices: false,
-              });
+              // Filter for approved payments with accounts queries
+              filterAccountsQueries();
               navigate('/payments');
             }}
           >
