@@ -116,7 +116,7 @@ const FundStats: React.FC = () => {
             <div className="flex items-start justify-between">
               <div className="flex flex-col">
                 <span className="text-sm text-gray-500 mb-1">Net Available</span>
-                <span className={`text-2xl font-semibold ${(dashboardStats?.netFundAvailable || 0) >= 0 ? 'text-gray-900' : 'text-error-600'}`}>
+                <span className={`text-2xl font-semibold ${(dashboardStats?.netFundAvailable || 0) > 0 ? 'text-green-600' : 'text-error-600'}`}>
                   {formatCurrency(dashboardStats?.netFundAvailable || 0)}
                 </span>
               </div>

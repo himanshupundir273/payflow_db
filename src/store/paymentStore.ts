@@ -52,7 +52,14 @@ interface PaymentState {
   getFundStats: () => Promise<void>;
   
   // Actions
-  fetchPayments: (page?: number, pageSize?: number, forceRefresh?: boolean, filters?: Partial<FilterOptions>, sortOptions?: SortOptions, searchTerm?: string) => Promise<void>;
+  fetchPayments: (
+    page?: number, 
+    pageSize?: number, 
+    forceRefresh?: boolean, 
+    filters?: Partial<FilterOptions>, 
+    sortOptions?: SortOptions, 
+    searchTerm?: string
+  ) => Promise<{ payments: PaymentRequest[] } | null>;
   fetchPaymentById: (id: string) => Promise<PaymentRequest | null>;
   fetchDashboardPayments: () => Promise<PaymentRequest[]>;
   fetchDashboardStats: () => Promise<void>;
@@ -385,64 +392,64 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     // Prevent concurrent calls
     if (isFetching && !forceRefresh) {
       console.log('fetchPayments already in progress, skipping duplicate call');
-      return;
+      return null;
     }
     
     isFetching = true;
     set({ isLoading: true });
     
-    // Use provided pagination parameters or defaults
-    const currentPagination = get().pagination;
-    const currentPage = page ?? currentPagination.page;
-    const currentPageSize = pageSize ?? currentPagination.pageSize;
-    
-    // Use provided filters or current filter options
-    const currentFilters = filters ?? get().filterOptions;
-    
-    // Use provided sort options or current sort options
-    const currentSortOptions = sortOptions ?? get().sortOptions;
-    
-    // Use provided search term or current search term
-    const currentSearchTerm = searchTerm ?? get().searchTerm;
-    
-    // Update sort options in state if provided
-    if (sortOptions) {
-      set(state => ({
-        sortOptions: sortOptions
-      }));
-    }
-    
-    // Update search term in state if provided
-    if (searchTerm !== undefined) {
-      set(state => ({
-        searchTerm: searchTerm
-      }));
-    }
-
-    // Map frontend field names to database column names
-    const getDbColumnName = (field: string): string => {
-      const fieldMapping: Record<string, string> = {
-        'serialNumber': 'serial_number',
-        'date': 'date',
-        'companyName': 'company_name',
-        'vendorName': 'vendor_name',
-        'advanceDetails': 'advance_details',
-        'paymentAmount': 'payment_amount',
-        'status': 'status',
-        'createdAt': 'created_at',
-        'updatedAt': 'updated_at'
-      };
-      return fieldMapping[field] || 'created_at';
-    };
-    
     try {
       const result = await withNetworkCheck(async () => {
         try {
+          // Use provided pagination parameters or defaults
+          const currentPagination = get().pagination;
+          const currentPage = page ?? currentPagination.page;
+          const currentPageSize = pageSize ?? currentPagination.pageSize;
+          
+          // Use provided filters or current filter options
+          const currentFilters = filters ?? get().filterOptions;
+          
+          // Use provided sort options or current sort options
+          const currentSortOptions = sortOptions ?? get().sortOptions;
+          
+          // Use provided search term or current search term
+          const currentSearchTerm = searchTerm ?? get().searchTerm;
+          
+          // Update sort options in state if provided
+          if (sortOptions) {
+            set(state => ({
+              sortOptions: sortOptions
+            }));
+          }
+          
+          // Update search term in state if provided
+          if (searchTerm !== undefined) {
+            set(state => ({
+              searchTerm: searchTerm
+            }));
+          }
+
+          // Map frontend field names to database column names
+          const getDbColumnName = (field: string): string => {
+            const fieldMapping: Record<string, string> = {
+              'serialNumber': 'serial_number',
+              'date': 'date',
+              'companyName': 'company_name',
+              'vendorName': 'vendor_name',
+              'advanceDetails': 'advance_details',
+              'paymentAmount': 'payment_amount',
+              'status': 'status',
+              'createdAt': 'created_at',
+              'updatedAt': 'updated_at'
+            };
+            return fieldMapping[field] || 'created_at';
+          };
+          
           // Get the current user's role
           const { data: { user: authUser } } = await supabase.auth.getUser();
           if (!authUser) {
             console.log('No authenticated user found');
-            return;
+            return null;
           }
 
           // Get user role (minimal query)
@@ -455,7 +462,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           if (userError) {
             console.error('Error fetching user role:', userError);
             handleSupabaseError(userError);
-            return;
+            return null;
           }
 
           // Helper function to apply filters to a query
@@ -503,10 +510,22 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
                 query = query.in('status', currentFilters.status);
               }
 
+              // Apply date range filter with proper time boundaries
               if (currentFilters.dateRange?.start && currentFilters.dateRange?.end) {
+                const startDate = new Date(currentFilters.dateRange.start);
+                startDate.setUTCHours(0, 0, 0, 0);
+                
+                const endDate = new Date(currentFilters.dateRange.end);
+                endDate.setUTCHours(23, 59, 59, 999);
+
                 query = query
-                  .gte('date', currentFilters.dateRange.start)
-                  .lte('date', currentFilters.dateRange.end);
+                  .gte('date', startDate.toISOString())
+                  .lte('date', endDate.toISOString());
+
+                console.log('Date filter:', {
+                  start: startDate.toISOString(),
+                  end: endDate.toISOString()
+                });
               }
 
               if (currentFilters.vendor) {
@@ -537,7 +556,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           if (countError) {
             console.error('Error fetching count:', countError);
             handleSupabaseError(countError);
-            return;
+            return null;
           }
 
           // Calculate pagination values
@@ -561,7 +580,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           if (error) {
             console.error('Error fetching payments:', error);
             handleSupabaseError(error);
-            return;
+            return null;
           }
 
           // Update pagination state
@@ -581,7 +600,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               isLoading: false,
               dashboardStats: calculateDashboardStats([])
             });
-            return;
+            return { payments: [] };
           }
 
           // Transform payments with user data but WITHOUT bills and attachments for lightweight loading
@@ -708,6 +727,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             }
           });
           
+          // Return the payments array
+          return { payments: newPayments };
+          
         } catch (error) {
           console.error('Error in fetchPayments:', error);
           throw error;
@@ -716,7 +738,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
       if (!result) {
         set({ isLoading: false });
+        return null;
       }
+
+      return result;
+
     } finally {
       // Always reset the flag, even if an error occurs
       isFetching = false;
