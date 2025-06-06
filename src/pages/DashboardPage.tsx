@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import PaymentTable from '../components/payments/PaymentTable';
 import { checkNetworkConnection } from '../lib/network';
+import FundStats from '../components/dashboard/FundStats';
 
 const DashboardPage: React.FC = () => {
   const { user } = useAuthStore();
@@ -215,8 +216,10 @@ const DashboardPage: React.FC = () => {
       navigate('/payments');
     } else if (user?.role === 'admin' || user?.role === 'accounts') {
       if (status === 'pending') {
+        // For both admin and accounts users, redirect to approvals page
         navigate('/approvals');
       } else if (status === 'approved' && user?.role === 'accounts') {
+        // For accounts users, "Pending Approval" card shows pending payments on payments page
         setFilterOptions({
           status: ['pending'],
           overdueInvoices: false,
@@ -397,7 +400,7 @@ const DashboardPage: React.FC = () => {
                   : 'Pending Approval'}
               </p>
               <p className="mt-1 text-3xl font-semibold text-gray-900">
-                {stats.pending}
+                {user?.role === 'accounts' ? stats.approved : stats.pending}
               </p>
             </div>
             <div className="p-3 bg-warning-100 rounded-full">
@@ -406,12 +409,17 @@ const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-4">
             <div className="text-sm text-gray-500">
-              Total:{' '}
-              {stats.pendingAmount.toLocaleString('en-IN', {
-                style: 'currency',
-                currency: 'INR',
-                maximumFractionDigits: 0,
-              })}
+              {user?.role === 'accounts' 
+                ? `Total: ${(stats.totalAmount - stats.pendingAmount).toLocaleString('en-IN', {
+                    style: 'currency',
+                    currency: 'INR',
+                    maximumFractionDigits: 0,
+                  })}`
+                : `Total: ${stats.pendingAmount.toLocaleString('en-IN', {
+                    style: 'currency',
+                    currency: 'INR',
+                    maximumFractionDigits: 0,
+                  })}`}
             </div>
           </div>
         </Card>
@@ -430,7 +438,7 @@ const DashboardPage: React.FC = () => {
                 {user?.role === 'accounts' ? 'Pending Approval' : 'Approved'}
               </p>
               <p className="mt-1 text-3xl font-semibold text-gray-900">
-                {stats.approved}
+                {user?.role === 'accounts' ? stats.pending : stats.approved}
               </p>
             </div>
             <div className="p-3 bg-success-100 rounded-full">
@@ -439,11 +447,11 @@ const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-4">
             <div className="text-sm text-gray-500">
-              {stats.approved > 0
-                ? `${((stats.approved / stats.total) * 100).toFixed(
-                    0
-                  )}% approval rate`
-                : 'No approvals yet'}
+              {user?.role === 'accounts'
+                ? `${((stats.pending / stats.total) * 100).toFixed(0)}% approval rate`
+                : stats.approved > 0
+                  ? `${((stats.approved / stats.total) * 100).toFixed(0)}% approval rate`
+                  : 'No approvals yet'}
             </div>
           </div>
         </Card>
@@ -476,6 +484,7 @@ const DashboardPage: React.FC = () => {
           </div>
         </Card>
       </div>
+      {user?.role !== 'user' && <FundStats />}
 
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">

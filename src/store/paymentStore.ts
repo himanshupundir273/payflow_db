@@ -19,6 +19,10 @@ interface DashboardStats {
   overdueAdvanceInvoices: number;
   totalAmount: number;
   pendingAmount: number;
+  totalFundAvailable: number;
+  totalPaymentToInitiate: number;
+  netFundAvailable: number;
+  dayId: string;
 }
 
 interface PaginationOptions {
@@ -42,6 +46,10 @@ interface PaymentState {
   pagination: PaginationOptions;
   sortOptions: SortOptions;
   searchTerm: string;
+  
+  // New functions for fund tracking
+  addFund: (amount: number) => Promise<void>;
+  getFundStats: () => Promise<void>;
   
   // Actions
   fetchPayments: (page?: number, pageSize?: number, forceRefresh?: boolean, filters?: Partial<FilterOptions>, sortOptions?: SortOptions, searchTerm?: string) => Promise<void>;
@@ -98,6 +106,24 @@ const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
     .filter(p => p.status === 'pending')
     .reduce((sum, p) => sum + p.payment_amount, 0);
 
+  // Calculate total payment to be initiated (payments between 6pm previous day to 6pm current day)
+  const now = new Date();
+  const sixPMToday = new Date(now);
+  sixPMToday.setHours(18, 0, 0, 0);
+  const sixPMYesterday = new Date(sixPMToday);
+  sixPMYesterday.setDate(sixPMYesterday.getDate() - 1);
+
+  const totalPaymentToInitiate = payments
+    .filter(p => {
+      const paymentDate = new Date(p.created_at);
+      return p.status === 'approved' && 
+             paymentDate >= sixPMYesterday && 
+             paymentDate <= sixPMToday;
+    })
+    .reduce((sum, p) => sum + p.payment_amount, 0);
+
+  // Get total fund available and day_id from the funds table
+  // These will be updated by the getFundStats function
   return {
     total,
     pending,
@@ -109,6 +135,10 @@ const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
     overdueAdvanceInvoices,
     totalAmount,
     pendingAmount,
+    totalFundAvailable: 0, // Will be set by getFundStats
+    totalPaymentToInitiate,
+    netFundAvailable: 0, // Will be set by getFundStats
+    dayId: '' // Will be set by getFundStats
   };
 };
 
@@ -663,11 +693,19 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
           const stats = calculateDashboardStats(allPaymentsForStats);
 
+          // Preserve fund stats if they exist
+          const currentStats = get().dashboardStats;
           set({ 
             payments: newPayments,
             filteredPayments: newPayments,
             isLoading: false,
-            dashboardStats: stats
+            dashboardStats: {
+              ...stats,
+              totalFundAvailable: currentStats?.totalFundAvailable ?? 0,
+              totalPaymentToInitiate: currentStats?.totalPaymentToInitiate ?? stats.totalPaymentToInitiate,
+              netFundAvailable: (currentStats?.totalFundAvailable ?? 0) - (currentStats?.totalPaymentToInitiate ?? stats.totalPaymentToInitiate),
+              dayId: currentStats?.dayId ?? ''
+            }
           });
           
         } catch (error) {
@@ -1543,10 +1581,9 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             query = query.eq('requested_by', authUser.id);
           }
 
-          // Get recent payments (limit to 50 for dashboard)
+          // Get all payments for accurate stats
           const { data: rows, error } = await query
-            .order('created_at', { ascending: false })
-            .limit(50);
+            .order('created_at', { ascending: false });
 
           if (error) {
             console.error('Error fetching dashboard payments:', error);
@@ -1655,6 +1692,149 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     } catch (error) {
       console.error('Error fetching dashboard payments:', error);
       return [];
+    }
+  },
+
+  addFund: async (amount: number): Promise<void> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No authenticated user');
+
+      // Get current day ID first
+      const { data: currentDayId, error: dayIdError } = await supabase
+        .rpc('get_current_day_id');
+
+      if (dayIdError) throw dayIdError;
+
+      // Add fund to the funds table with the current day_id
+      const { error: fundError } = await supabase
+        .from('funds')
+        .insert({
+          amount,
+          added_by: user.id,
+          day_id: currentDayId
+        });
+
+      if (fundError) throw fundError;
+
+      // Get total funds available for current day to verify the addition
+      const { data: funds, error: fundsError } = await supabase
+        .from('funds')
+        .select('amount')
+        .eq('day_id', currentDayId);
+
+      if (fundsError) throw fundsError;
+
+      const totalFundAvailable = funds?.reduce((sum, fund) => sum + (fund.amount || 0), 0) || 0;
+
+      // Update dashboard stats with the new fund amount
+      set(state => ({
+        ...state,
+        dashboardStats: {
+          ...(state.dashboardStats || {
+            total: 0,
+            pending: 0,
+            approved: 0,
+            rejected: 0,
+            processed: 0,
+            queryRaised: 0,
+            accountsQueriesRaised: 0,
+            overdueAdvanceInvoices: 0,
+            totalAmount: 0,
+            pendingAmount: 0,
+            totalFundAvailable: 0,
+            totalPaymentToInitiate: 0,
+            netFundAvailable: 0,
+            dayId: ''
+          }),
+          totalFundAvailable,
+          totalPaymentToInitiate: state.dashboardStats?.totalPaymentToInitiate || 0,
+          netFundAvailable: totalFundAvailable - (state.dashboardStats?.totalPaymentToInitiate || 0),
+          dayId: currentDayId
+        }
+      }));
+    } catch (error) {
+      console.error('Error adding fund:', error);
+      throw error;
+    }
+  },
+
+  getFundStats: async (): Promise<void> => {
+    try {
+      // Get the current day's funds
+      const { data: currentDayId, error: dayIdError } = await supabase
+        .rpc('get_current_day_id');
+
+      if (dayIdError) {
+        console.error('Error getting current day ID:', dayIdError);
+        return;
+      }
+
+      // Get total funds available for current day
+      const { data: funds, error: fundsError } = await supabase
+        .from('funds')
+        .select('amount')
+        .eq('day_id', currentDayId);
+
+      if (fundsError) {
+        console.error('Error getting funds:', fundsError);
+        return;
+      }
+
+      const totalFundAvailable = funds?.reduce((sum, fund) => sum + (fund.amount || 0), 0) || 0;
+
+      // Get all payments for the current cycle
+      const now = new Date();
+      const sixPMToday = new Date(now);
+      sixPMToday.setHours(18, 0, 0, 0);
+      const sixPMYesterday = new Date(sixPMToday);
+      sixPMYesterday.setDate(sixPMYesterday.getDate() - 1);
+
+      const { data: payments, error: paymentsError } = await supabase
+        .from('payments')
+        .select('payment_amount, status')
+        .gte('created_at', sixPMYesterday.toISOString())
+        .lte('created_at', sixPMToday.toISOString())
+        .eq('status', 'approved');
+
+      if (paymentsError) {
+        console.error('Error getting payments:', paymentsError);
+        return;
+      }
+
+      // Calculate total payment to initiate from approved payments
+      const totalPaymentToInitiate = payments?.reduce((sum, p) => sum + (p.payment_amount || 0), 0) || 0;
+
+      // Update the dashboard stats with new fund values
+      set(state => ({
+        ...state,
+        dashboardStats: {
+          ...(state.dashboardStats || {
+            total: 0,
+            pending: 0,
+            approved: 0,
+            rejected: 0,
+            processed: 0,
+            queryRaised: 0,
+            accountsQueriesRaised: 0,
+            overdueAdvanceInvoices: 0,
+            totalAmount: 0,
+            pendingAmount: 0,
+            totalFundAvailable: 0,
+            totalPaymentToInitiate: 0,
+            netFundAvailable: 0,
+            dayId: ''
+          }),
+          totalFundAvailable,
+          totalPaymentToInitiate,
+          netFundAvailable: totalFundAvailable - totalPaymentToInitiate,
+          dayId: currentDayId
+        }
+      }));
+    } catch (error) {
+      console.error('Error getting fund stats:', error);
+      // Don't throw the error, just log it and preserve existing stats
+      return;
     }
   }
 }));
