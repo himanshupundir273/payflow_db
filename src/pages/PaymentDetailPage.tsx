@@ -307,6 +307,50 @@ const PaymentDetailPage: React.FC = () => {
     return 'unknown';
   };
 
+  const handleFileView = async (attachment: any) => {
+    if (!isOnline) {
+      toast.error(
+        'No internet connection. Please check your connection and try again.'
+      );
+      return;
+    }
+
+    if (!signedUrls[attachment.id]) {
+      toast.error(
+        'File URL is not available. Please try again later.'
+      );
+      return;
+    }
+
+    try {
+      const response = await fetch(signedUrls[attachment.id]);
+      if (!response.ok) {
+        toast.error('File not found. Please try again later.');
+        return;
+      }
+
+      // Check if running on web or mobile
+      if (Capacitor.getPlatform() === 'web') {
+        // For web, open in new tab
+        window.open(signedUrls[attachment.id], '_blank');
+      } else {
+        // For mobile app, use the existing file viewer
+        const fileType = getFileType(attachment.fileName || '');
+        navigate('/file-viewer', {
+          state: {
+            url: signedUrls[attachment.id],
+            type: fileType,
+            fileName: attachment.fileName,
+            paymentId: id,
+          },
+        });
+      }
+    } catch (error) {
+      console.error('Error accessing file:', error);
+      toast.error('Error accessing file. Please try again later.');
+    }
+  };
+
   return (
     <>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -644,51 +688,7 @@ const PaymentDetailPage: React.FC = () => {
                           <div className="flex justify-end">
                             <button
                               className="text-sm text-primary-600 hover:text-primary-700"
-                              onClick={async () => {
-                                if (!isOnline) {
-                                  toast.error(
-                                    'No internet connection. Please check your connection and try again.'
-                                  );
-                                  return;
-                                }
-
-                                if (!signedUrls[attachment.id]) {
-                                  toast.error(
-                                    'File URL is not available. Please try again later.'
-                                  );
-                                  return;
-                                }
-
-                                try {
-                                  const response = await fetch(
-                                    signedUrls[attachment.id]
-                                  );
-                                  if (!response.ok) {
-                                    toast.error(
-                                      'File not found. Please try again later.'
-                                    );
-                                    return;
-                                  }
-
-                                  const fileType = getFileType(
-                                    attachment.fileName || ''
-                                  );
-                                  // Navigate to the file viewer screen with the file details
-                                  navigate('/file-viewer', {
-                                    state: {
-                                      url: signedUrls[attachment.id],
-                                      type: fileType,
-                                      fileName: attachment.fileName,
-                                      paymentId: id,
-                                    },
-                                  });
-                                } catch (error) {
-                                  console.error('Error accessing file:', error);
-                                  toast.error(
-                                    'Error accessing file. Please try again later.'
-                                  );
-                                }
-                              }}
+                              onClick={() => handleFileView(attachment)}
                             >
                               View File
                             </button>

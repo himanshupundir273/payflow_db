@@ -177,6 +177,7 @@ const DashboardPage: React.FC = () => {
       dateRange: { start: null, end: null },
       vendor: null,
       company: null,
+      companyList: null,
       overdueInvoices: false,
       hasAccountsQuery: false,
     });

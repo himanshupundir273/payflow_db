@@ -372,6 +372,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     },
     vendor: null,
     company: null,
+    companyList: null,
     overdueInvoices: false,
     hasAccountsQuery: false,
   },
@@ -533,7 +534,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               }
 
               if (currentFilters.company) {
-                query = query.ilike('company_name', `%${currentFilters.company}%`);
+                // For backward compatibility with existing pages
+                query = query.or(`company_name.ilike.%${currentFilters.company}%`);
+              } else if (currentFilters.companyList && currentFilters.companyList.length > 0) {
+                // For advanced company filtering (ExportPage)
+                const companyConditions = currentFilters.companyList.flatMap(company => [
+                  `company_name.ilike.%${company.code}%`,
+                  `company_name.ilike.%${company.fullName}%`
+                ]).join(',');
+                query = query.or(companyConditions);
               }
 
               // Apply accounts query filter
@@ -1515,6 +1524,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         dateRange: { start: null, end: null },
         vendor: null,
         company: null,
+        companyList: null,
         overdueInvoices: true,
         hasAccountsQuery: false,
       }
@@ -1532,6 +1542,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         dateRange: { start: null, end: null },
         vendor: null,
         company: null,
+        companyList: null,
         overdueInvoices: false,
         hasAccountsQuery: true,
       }

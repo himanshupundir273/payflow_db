@@ -76,6 +76,7 @@ export interface FilterOptions {
   };
   vendor: string | null;
   company: string | null;
+  companyList: { code: string; fullName: string }[] | null;
   overdueInvoices: boolean;
   hasAccountsQuery: boolean;
 }

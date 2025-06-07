@@ -10,6 +10,21 @@ import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
+// Import company options
+const COMPANY_MAPPING = {
+  'ATC': 'Atlanta',
+  'ATCL': 'Atlanta (L)',
+  'BTC': 'Bestco',
+  'CLITE': 'Copperlite',
+  'NOTO': 'NotoFire',
+  'VCON': 'Valuecon',
+  'SGC': 'Satguru',
+  'NCCE': 'New',
+  'GJ-SB': 'New'
+} as const;
+
+const COMPANY_OPTIONS = Object.keys(COMPANY_MAPPING);
+
 const ExportPage: React.FC = () => {
   const { payments, fetchPayments, isLoading: storeLoading } = usePaymentStore();
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -18,6 +33,7 @@ const ExportPage: React.FC = () => {
     endDate: today, // Today
   });
   const [status, setStatus] = useState<string[]>(['approved', 'processed']);
+  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -42,28 +58,6 @@ const ExportPage: React.FC = () => {
     }
   };
   
-  const handleSearch = async () => {
-    setIsSearching(true);
-    try {
-      // Convert dates to start of day and end of day
-      const startDate = startOfDay(new Date(dateRange.startDate));
-      const endDate = endOfDay(new Date(dateRange.endDate));
-
-      // First fetch with a large page size to get total count
-      await fetchPayments(1, 10000, true, {
-        status,
-        dateRange: {
-          start: format(startDate, 'yyyy-MM-dd'),
-          end: format(endDate, 'yyyy-MM-dd')
-        }
-      });
-    } catch (error) {
-      console.error('Search error:', error);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-  
   const handleStatusToggle = (statusValue: string) => {
     if (statusValue === 'all') {
       setStatus([]);
@@ -77,6 +71,50 @@ const ExportPage: React.FC = () => {
         return [...prev, statusValue];
       }
     });
+  };
+  
+  const handleCompanyToggle = (companyValue: string) => {
+    if (companyValue === 'all') {
+      setSelectedCompanies([]);
+      return;
+    }
+
+    setSelectedCompanies(prev => {
+      if (prev.includes(companyValue)) {
+        return prev.filter(c => c !== companyValue);
+      } else {
+        return [...prev, companyValue];
+      }
+    });
+  };
+  
+  const handleSearch = async () => {
+    setIsSearching(true);
+    try {
+      // Convert dates to start of day and end of day
+      const startDate = startOfDay(new Date(dateRange.startDate));
+      const endDate = endOfDay(new Date(dateRange.endDate));
+
+      // First fetch with a large page size to get total count
+      await fetchPayments(1, 10000, true, {
+        status,
+        dateRange: {
+          start: format(startDate, 'yyyy-MM-dd'),
+          end: format(endDate, 'yyyy-MM-dd')
+        },
+        company: null, // Not using the legacy company field
+        companyList: selectedCompanies.length > 0 
+          ? selectedCompanies.map(code => ({ 
+              code, 
+              fullName: COMPANY_MAPPING[code as keyof typeof COMPANY_MAPPING]
+            }))
+          : null
+      });
+    } catch (error) {
+      console.error('Search error:', error);
+    } finally {
+      setIsSearching(false);
+    }
   };
   
   const exportToExcel = async () => {
@@ -236,6 +274,44 @@ const ExportPage: React.FC = () => {
               {status.length > 0 && (
                 <p className="text-sm text-gray-500 mt-2">
                   Selected: {status.length} status{status.length !== 1 ? 'es' : ''}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-2">Company Filter</label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => handleCompanyToggle('all')}
+                  className={`px-3 py-1 rounded-full text-sm font-medium ${
+                    selectedCompanies.length === 0
+                      ? 'bg-primary-100 text-primary-800'
+                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                  }`}
+                >
+                  All Companies
+                </button>
+                {COMPANY_OPTIONS.map(companyOption => (
+                  <button
+                    key={companyOption}
+                    onClick={() => handleCompanyToggle(companyOption)}
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      selectedCompanies.includes(companyOption)
+                        ? 'bg-primary-100 text-primary-800'
+                        : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                    }`}
+                  >
+                    {companyOption} - {COMPANY_MAPPING[companyOption as keyof typeof COMPANY_MAPPING]}
+                  </button>
+                ))}
+              </div>
+              {selectedCompanies.length > 0 && (
+                <p className="text-sm text-gray-500 mt-2">
+                  Selected companies: {selectedCompanies.length}
+                  <br />
+                  {selectedCompanies.map(code => 
+                    `${code} - ${COMPANY_MAPPING[code as keyof typeof COMPANY_MAPPING]}`
+                  ).join(', ')}
                 </p>
               )}
             </div>
