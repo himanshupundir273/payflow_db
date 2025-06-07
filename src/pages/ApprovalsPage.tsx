@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { usePaymentStore } from '../store/paymentStore';
 import PaymentTable from '../components/payments/PaymentTable';
@@ -8,45 +8,149 @@ import Card from '../components/ui/Card';
 
 const ApprovalsPage: React.FC = () => {
   const { user } = useAuthStore();
-  const { 
-    payments, 
-    filteredPayments, 
-    filterOptions, 
-    setFilterOptions, 
-    approvePayment, 
+  const {
+    payments,
+    filteredPayments,
+    isLoading,
+    pagination,
+    sortOptions,
+    searchTerm,
+    fetchPayments,
+    filterOptions,
+    setFilterOptions,
+    setSearchTerm,
+    approvePayment,
     rejectPayment,
+    bulkApprovePayments,
+    bulkRejectPayments,
     markAsProcessed,
-    raiseQuery
+    markInvoiceReceived,
+    raiseQuery,
+    raiseAccountsQuery,
   } = usePaymentStore();
-  
+
   const [showFilters, setShowFilters] = useState(false);
-  
+
+  // Fetch payments when component mounts
+  React.useEffect(() => {
+    if (user && payments.length === 0) {
+      fetchPayments(1, 10, true, filterOptions);
+    }
+  }, [user, fetchPayments]);
+
   // Set initial filter based on user role
   useEffect(() => {
     if (user?.role === 'admin') {
       // Admin can only see pending requests
       setFilterOptions({
         ...filterOptions,
-        status: ['pending']
+        status: ['pending'],
       });
     } else if (user?.role === 'accounts') {
       // Accounts can only see approved requests
       setFilterOptions({
         ...filterOptions,
-        status: ['approved']
+        status: ['approved'],
       });
     }
   }, [user?.role]);
-  
+
   const statusOptions = [
     { value: 'all', label: 'All Statuses' },
     { value: 'pending', label: 'Pending' },
     { value: 'approved', label: 'Approved' },
     { value: 'rejected', label: 'Rejected' },
     { value: 'processed', label: 'Processed' },
-    { value: 'query_raised', label: 'Query Raised' }
+    { value: 'query_raised', label: 'Query Raised' },
   ];
-  
+
+  const handlePageChange = useCallback(
+    (page: number) => {
+      fetchPayments(
+        page,
+        pagination.pageSize,
+        true,
+        filterOptions,
+        sortOptions,
+        searchTerm
+      );
+    },
+    [fetchPayments, pagination.pageSize, filterOptions, sortOptions, searchTerm]
+  );
+
+  const handlePageSizeChange = useCallback(
+    (pageSize: number) => {
+      fetchPayments(1, pageSize, true, filterOptions, sortOptions, searchTerm);
+    },
+    [fetchPayments, filterOptions, sortOptions, searchTerm]
+  );
+
+  const handleSort = useCallback(
+    (field: string, direction: 'asc' | 'desc') => {
+      const newSortOptions = { field, direction };
+      fetchPayments(
+        1,
+        pagination.pageSize,
+        true,
+        filterOptions,
+        newSortOptions,
+        searchTerm
+      );
+    },
+    [fetchPayments, pagination.pageSize, filterOptions, searchTerm]
+  );
+
+  const handleSearch = useCallback(
+    (newSearchTerm: string) => {
+      setSearchTerm(newSearchTerm);
+      fetchPayments(
+        1,
+        pagination.pageSize,
+        true,
+        filterOptions,
+        sortOptions,
+        newSearchTerm
+      );
+    },
+    [
+      setSearchTerm,
+      fetchPayments,
+      pagination.pageSize,
+      filterOptions,
+      sortOptions,
+    ]
+  );
+
+  // Memoize serverPagination object to prevent unnecessary re-renders
+  const serverPaginationConfig = useMemo(
+    () => ({
+      currentPage: pagination.page,
+      pageSize: pagination.pageSize,
+      totalCount: pagination.totalCount,
+      totalPages: pagination.totalPages,
+      onPageChange: handlePageChange,
+      onPageSizeChange: handlePageSizeChange,
+      sortField: sortOptions.field,
+      sortDirection: sortOptions.direction,
+      onSort: handleSort,
+      searchTerm: searchTerm,
+      onSearch: handleSearch,
+    }),
+    [
+      pagination.page,
+      pagination.pageSize,
+      pagination.totalCount,
+      pagination.totalPages,
+      handlePageChange,
+      handlePageSizeChange,
+      sortOptions.field,
+      sortOptions.direction,
+      handleSort,
+      searchTerm,
+      handleSearch,
+    ]
+  );
+
   const handleStatusFilterChange = (status: string) => {
     if (status === 'all') {
       setFilterOptions({ ...filterOptions, status: [] });
@@ -58,58 +162,172 @@ const ApprovalsPage: React.FC = () => {
       // Remove the status if it's already selected
       setFilterOptions({
         ...filterOptions,
-        status: currentStatuses.filter(s => s !== status)
+        status: currentStatuses.filter((s) => s !== status),
       });
     } else {
       // Add the status if it's not selected
       setFilterOptions({
         ...filterOptions,
-        status: [...currentStatuses, status]
+        status: [...currentStatuses, status],
       });
     }
   };
-  
+
   const clearFilters = () => {
     setFilterOptions({
       status: [],
       dateRange: { start: null, end: null },
       vendor: null,
-      company: null
+      company: null,
+      companyList: null,
+      overdueInvoices: false,
+      hasAccountsQuery: false,
     });
   };
-  
-  const handleApprove = async (id: string) => {
-    if (!user || user.role !== 'admin') return;
-    await approvePayment(id, user);
+
+  const handleApprove = async (id: string, paymentAmount: number) => {
+    if (!user) return;
+    await approvePayment(id, user, paymentAmount);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
-  
+
   const handleReject = async (id: string) => {
-    if (!user || user.role !== 'admin') return;
+    if (!user) return;
     await rejectPayment(id, user);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
-  
-  const handleProcess = async (id: string) => {
-    if (!user || user.role !== 'accounts') return;
-    await markAsProcessed(id);
+
+  const handleBulkApprove = async (ids: string[]) => {
+    if (!user) return;
+    const result = await bulkApprovePayments(ids, user);
+
+    if (result.success.length > 0) {
+      console.log(`Successfully approved ${result.success.length} payments`);
+    }
+    if (result.failed.length > 0) {
+      console.error(`Failed to approve ${result.failed.length} payments`);
+    }
+
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
-  
+
+  const handleBulkReject = async (ids: string[]) => {
+    if (!user) return;
+    const result = await bulkRejectPayments(ids, user);
+
+    if (result.success.length > 0) {
+      console.log(`Successfully rejected ${result.success.length} payments`);
+    }
+    if (result.failed.length > 0) {
+      console.error(`Failed to reject ${result.failed.length} payments`);
+    }
+
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
+  };
+
+  const handleProcess = async (
+    id: string,
+    invoiceReceived: 'yes' | 'no'
+  ) => {
+    await markAsProcessed(id, invoiceReceived);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
+  };
+
   const handleQuery = async (id: string, query: string) => {
-    if (!user || user.role !== 'admin') return;
+    if (!user) return;
     await raiseQuery(id, user, query);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
   };
-  
+
+  const handleAccountsQuery = async (id: string, query: string) => {
+    if (!user) return;
+    await raiseAccountsQuery(id, user, query);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
+  };
+
+  const handleMarkInvoiceReceived = async (id: string) => {
+    await markInvoiceReceived(id);
+    // Refresh current page to reflect changes
+    fetchPayments(
+      pagination.page,
+      pagination.pageSize,
+      true,
+      filterOptions,
+      sortOptions,
+      searchTerm
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Payment Approvals</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Payment Approvals
+          </h1>
           <p className="text-sm text-gray-500">
-            {user?.role === 'admin' 
-              ? 'Review and approve pending payment requests' 
+            {user?.role === 'admin'
+              ? 'Review and approve pending payment requests'
               : 'Process approved payments'}
           </p>
         </div>
-        
+
         <Button
           variant="outline"
           icon={<Filter className="h-5 w-5" />}
@@ -119,7 +337,7 @@ const ApprovalsPage: React.FC = () => {
           {showFilters ? 'Hide Filters' : 'Show Filters'}
         </Button>
       </div>
-      
+
       {showFilters && (
         <Card className="mb-6 animate-slide-down">
           <div className="flex justify-between items-center mb-4">
@@ -131,56 +349,70 @@ const ApprovalsPage: React.FC = () => {
               <X className="h-5 w-5" />
             </button>
           </div>
-          
+
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-2">Status</label>
+              <label className="text-sm font-medium text-gray-700 block mb-2">
+                Status
+              </label>
               <div className="flex flex-wrap gap-2">
-                {statusOptions.map(option => (
+                {statusOptions.map((option) => (
                   <button
                     key={option.value}
                     onClick={() => handleStatusFilterChange(option.value)}
                     className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      (option.value === 'all' && filterOptions.status.length === 0) ||
-                      (option.value !== 'all' && filterOptions.status.includes(option.value))
+                      (option.value === 'all' &&
+                        filterOptions.status.length === 0) ||
+                      (option.value !== 'all' &&
+                        filterOptions.status.includes(option.value))
                         ? 'bg-primary-100 text-primary-800'
                         : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                     }`}
                   >
                     {option.label}
-                    {option.value !== 'all' && filterOptions.status.includes(option.value) && (
-                      <span className="ml-2">✓</span>
-                    )}
+                    {option.value !== 'all' &&
+                      filterOptions.status.includes(option.value) && (
+                        <span className="ml-2">✓</span>
+                      )}
                   </button>
                 ))}
               </div>
               {filterOptions.status.length > 0 && (
                 <p className="text-sm text-gray-500 mt-2">
-                  Selected: {filterOptions.status.length} status{filterOptions.status.length !== 1 ? 'es' : ''}
+                  Selected: {filterOptions.status.length} status
+                  {filterOptions.status.length !== 1 ? 'es' : ''}
                 </p>
               )}
             </div>
-            
+
             <div className="flex justify-end">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={clearFilters}
-              >
+              <Button size="sm" variant="outline" onClick={clearFilters}>
                 Clear All Filters
               </Button>
             </div>
           </div>
         </Card>
       )}
-      
-      <PaymentTable 
+
+      <PaymentTable
         payments={filteredPayments}
+        isLoading={isLoading}
+        showActions={true}
         onApprove={user?.role === 'admin' ? handleApprove : undefined}
         onReject={user?.role === 'admin' ? handleReject : undefined}
+        onBulkApprove={user?.role === 'admin' ? handleBulkApprove : undefined}
+        onBulkReject={user?.role === 'admin' ? handleBulkReject : undefined}
+        enableBulkSelection={user?.role === 'admin'}
+        maxSelections={10}
         onProcess={user?.role === 'accounts' ? handleProcess : undefined}
         onQuery={user?.role === 'admin' ? handleQuery : undefined}
-        showActions={true}
+        onAccountsQuery={
+          user?.role === 'accounts' ? handleAccountsQuery : undefined
+        }
+        onMarkInvoiceReceived={
+          user?.role === 'accounts' ? handleMarkInvoiceReceived : undefined
+        }
+        serverPagination={serverPaginationConfig}
       />
     </div>
   );

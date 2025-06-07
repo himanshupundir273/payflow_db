@@ -35,6 +35,32 @@ export interface Database {
           created_at?: string
         }
       }
+      vendors: {
+        Row: {
+          id: string
+          name: string
+          account_number: string
+          ifsc_code: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          account_number: string
+          ifsc_code: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          account_number?: string
+          ifsc_code?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
       payments: {
         Row: {
           id: string
@@ -42,16 +68,24 @@ export interface Database {
           date: string
           vendor_name: string
           total_outstanding: number
-          advance_details: 'tax_invoice' | 'proforma_invoice'
+          advance_details: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others'
           payment_amount: number
           balance_amount: number
           item_description: string
           requested_by: string
           approved_by: string | null
           company_name: string
+          company_branch: string
           bank_name: string
+          payment_mode: 'net_banking' | 'upi'
           status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details: string | null
+          accounts_query: string | null
+          lpr: string | null
+          ioa: string | null
+          cpp: string | null
+          invoice_received: 'yes' | 'no' | null
+          starting_amount: number | null
           created_at: string
           updated_at: string
         }
@@ -61,16 +95,24 @@ export interface Database {
           date: string
           vendor_name: string
           total_outstanding: number
-          advance_details: 'tax_invoice' | 'proforma_invoice'
+          advance_details: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others'
           payment_amount: number
           balance_amount: number
           item_description: string
           requested_by: string
           approved_by?: string | null
           company_name: string
+          company_branch: string
           bank_name: string
+          payment_mode?: 'net_banking' | 'upi'
           status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details?: string | null
+          accounts_query?: string | null
+          lpr?: string | null
+          ioa?: string | null
+          cpp?: string | null
+          invoice_received?: 'yes' | 'no' | null
+          starting_amount?: number | null
           created_at?: string
           updated_at?: string
         }
@@ -80,16 +122,24 @@ export interface Database {
           date?: string
           vendor_name?: string
           total_outstanding?: number
-          advance_details?: 'tax_invoice' | 'proforma_invoice'
+          advance_details?: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others'
           payment_amount?: number
           balance_amount?: number
           item_description?: string
           requested_by?: string
           approved_by?: string | null
           company_name?: string
+          company_branch?: string
           bank_name?: string
+          payment_mode?: 'net_banking' | 'upi'
           status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details?: string | null
+          accounts_query?: string | null
+          lpr?: string | null
+          ioa?: string | null
+          cpp?: string | null
+          invoice_received?: 'yes' | 'no' | null
+          starting_amount?: number | null
           created_at?: string
           updated_at?: string
         }

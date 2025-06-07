@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { User, UserRole } from '../types';
 import { supabase, handleSupabaseError } from '../lib/supabase';
 import { usePaymentStore } from '../store/paymentStore';
-import { showErrorToast } from '../lib/toast';
+import { showErrorToast, showSuccessToast } from '../lib/toast';
 import { withNetworkCheck } from '../lib/network';
 
 interface AuthState {
@@ -11,7 +11,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   initializeAuth: () => Promise<void>;
-  // switchRole: (role: UserRole) => void; // For demo purposes
+  changePassword: (newPassword: string) => Promise<boolean>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -44,6 +44,10 @@ export const useAuthStore = create<AuthState>((set) => ({
             user: userData,
             isAuthenticated: true 
           });
+          
+          // Don't fetch payments during initialization - they will be fetched
+          // when the dashboard loads or user navigates to a page that needs them
+          // This prevents duplicate API calls on app startup
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
@@ -117,31 +121,37 @@ export const useAuthStore = create<AuthState>((set) => ({
     }, 'Failed to logout. Please check your internet connection.');
   },
   
-  // This is just for demo purposes to easily switch between roles
-  // switchRole: async (role: UserRole) => {
-  //   try {
-  //     const { data: { user: authUser } } = await supabase.auth.getUser();
-      
-  //     if (!authUser) {
-  //       throw new Error('No authenticated user');
-  //     }
+  changePassword: async (newPassword: string) => {
+    const result = await withNetworkCheck(async () => {
+      try {
+        const { data, error } = await supabase.auth.updateUser({
+          password: newPassword
+        });
 
-  //     const { data, error } = await supabase
-  //       .from('users')
-  //       .update({ role })
-  //       .eq('id', authUser.id)
-  //       .select()
-  //       .single();
+        if (error) {
+          handleSupabaseError(error);
+          return false;
+        }
 
-  //     if (error) {
-  //       handleSupabaseError(error);
-  //       return;
-  //     }
-  //     set(state => ({
-  //       user: data
-  //     }));
-  //   } catch (error) {
-  //     console.error('Role switch error:', error);
-  //   }
-  // }
+        showSuccessToast('Password updated successfully. Please log in again.');
+        
+        // Logout user after successful password change for security
+        setTimeout(async () => {
+          const { error: logoutError } = await supabase.auth.signOut();
+          if (logoutError) {
+            console.error('Logout after password change failed:', logoutError);
+          }
+          set({ user: null, isAuthenticated: false });
+        }, 1000); // Small delay to show the success message
+        
+        return true;
+      } catch (error) {
+        console.error('Password change error:', error);
+        showErrorToast('Failed to update password. Please try again.');
+        return false;
+      }
+    }, 'Failed to update password. Please check your internet connection.');
+
+    return result || false;
+  },
 }));

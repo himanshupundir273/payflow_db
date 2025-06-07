@@ -12,18 +12,14 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    // Disable email confirmation requirement
     flowType: 'implicit'
   },
 });
 
 // Helper function to handle Supabase errors
-export const handleSupabaseError = (error: unknown) => {
-  if (error instanceof Error) {
-    console.error('Supabase error:', error.message);
-    throw new Error(`Database operation failed: ${error.message}`);
-  }
-  throw new Error('An unknown database error occurred');
+export const handleSupabaseError = (error: any) => {
+  console.error('Supabase error:', error);
+  throw error;
 };
 
 // Type guard for Supabase errors

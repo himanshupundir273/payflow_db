@@ -25,7 +25,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
     ref
   ) => {
     const inputId = id || `input-${Math.random().toString(36).substring(2, 9)}`;
-    
+
     return (
       <div className={`${fullWidth ? 'w-full' : ''} ${className}`}>
         {label && (
@@ -36,14 +36,14 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             {label}
           </label>
         )}
-        
+
         <div className="relative">
           {leftIcon && (
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               {leftIcon}
             </div>
           )}
-          
+
           <input
             ref={ref}
             id={inputId}
@@ -59,14 +59,14 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             `}
             {...props}
           />
-          
+
           {rightIcon && (
-            <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+            <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
               {rightIcon}
             </div>
           )}
         </div>
-        
+
         {error ? (
           <p className="mt-1 text-sm text-error-500">{error}</p>
         ) : helperText ? (
