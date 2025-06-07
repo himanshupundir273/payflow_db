@@ -35,6 +35,7 @@ interface PaymentTableProps {
   onMarkInvoiceReceived?: (id: string) => void;
   enableBulkSelection?: boolean;
   maxSelections?: number;
+  hideControls?: boolean;
   // Server-side pagination props
   serverPagination?: {
     currentPage: number;
@@ -67,6 +68,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   onMarkInvoiceReceived,
   enableBulkSelection = false,
   maxSelections = 0,
+  hideControls = false,
   serverPagination,
 }) => {
   const { user } = useAuthStore();
@@ -532,77 +534,79 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   return (
     <>
       <Card>
-        <div className="mb-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div className="relative">
-              <Input
-                placeholder="Search payments..."
-                value={localSearchTerm}
-                onChange={(e) => setLocalSearchTerm(e.target.value)}
-                leftIcon={
-                  isSearching ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
-                  ) : (
-                    <Search className="h-5 w-5 text-gray-400" />
-                  )
-                }
-                className="max-w-xs"
-                disabled={false}
-              />
-              {localSearchTerm && (
-                <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                  <button
-                    onClick={() => setLocalSearchTerm('')}
-                    className="text-gray-400 hover:text-gray-600 focus:outline-none"
-                    type="button"
-                  >
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
+        {!hideControls && (
+          <div className="mb-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="relative">
+                <Input
+                  placeholder="Search payments..."
+                  value={localSearchTerm}
+                  onChange={(e) => setLocalSearchTerm(e.target.value)}
+                  leftIcon={
+                    isSearching ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-400"></div>
+                    ) : (
+                      <Search className="h-5 w-5 text-gray-400" />
+                    )
+                  }
+                  className="max-w-xs"
+                  disabled={false}
+                />
+                {localSearchTerm && (
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                    <button
+                      onClick={() => setLocalSearchTerm('')}
+                      className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                      type="button"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <label htmlFor="pageSize" className="text-sm text-gray-500">
-                  Show:
-                </label>
-                <select
-                  id="pageSize"
-                  value={pageSize}
-                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
-                  className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                >
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                </select>
-                <span className="text-sm text-gray-500">entries</span>
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="flex items-center space-x-2 text-sm text-gray-500">
-                <Filter className="h-4 w-4" />
-                <span>
-                  {isSearching
-                    ? 'Searching...'
-                    : `Showing ${
-                        displayStartIndex + 1
-                      }-${displayEndIndex} of ${displayTotalCount} payments`}
-                </span>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <label htmlFor="pageSize" className="text-sm text-gray-500">
+                    Show:
+                  </label>
+                  <select
+                    id="pageSize"
+                    value={pageSize}
+                    onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                    className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                  </select>
+                  <span className="text-sm text-gray-500">entries</span>
+                </div>
+                <div className="flex items-center space-x-2 text-sm text-gray-500">
+                  <Filter className="h-4 w-4" />
+                  <span>
+                    {isSearching
+                      ? 'Searching...'
+                      : `Showing ${
+                          displayStartIndex + 1
+                        }-${displayEndIndex} of ${displayTotalCount} payments`}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Bulk Actions Bar */}
         {enableBulkSelection && showBulkActions && user?.role === 'admin' && (

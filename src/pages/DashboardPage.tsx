@@ -510,6 +510,7 @@ const DashboardPage: React.FC = () => {
           payments={recentPayments}
           showActions={false}
           isLoading={dashboardLoading}
+          hideControls={true}
         />
       </div>
     </div>

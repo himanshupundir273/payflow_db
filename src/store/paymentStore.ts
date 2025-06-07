@@ -113,19 +113,23 @@ const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
     .filter(p => p.status === 'pending')
     .reduce((sum, p) => sum + p.payment_amount, 0);
 
-  // Calculate total payment to be initiated (payments between 6pm previous day to 6pm current day)
+  // Calculate total payment to be initiated (payments after 6pm today)
   const now = new Date();
-  const sixPMToday = new Date(now);
-  sixPMToday.setHours(18, 0, 0, 0);
-  const sixPMYesterday = new Date(sixPMToday);
-  sixPMYesterday.setDate(sixPMYesterday.getDate() - 1);
+  // Get today's date at 6 PM UTC
+  const todayAt6PMUTC = new Date();
+  todayAt6PMUTC.setUTCHours(12, 30, 0, 0); // 6 PM IST in UTC is 12:30 UTC
 
   const totalPaymentToInitiate = payments
     .filter(p => {
-      const paymentDate = new Date(p.created_at);
-      return p.status === 'approved' && 
-             paymentDate >= sixPMYesterday && 
-             paymentDate <= sixPMToday;
+      const createdAtUTC = new Date(p.created_at);
+      
+      // If current time is after 6 PM IST, show payments after 6 PM today
+      // If current time is before 6 PM IST, show payments after 6 PM yesterday
+      const startTime = now > todayAt6PMUTC ?
+        todayAt6PMUTC :
+        new Date(todayAt6PMUTC.getTime() - 24 * 60 * 60 * 1000);
+      
+      return createdAtUTC >= startTime;
     })
     .reduce((sum, p) => sum + p.payment_amount, 0);
 
@@ -522,11 +526,6 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
                 query = query
                   .gte('date', startDate.toISOString())
                   .lte('date', endDate.toISOString());
-
-                console.log('Date filter:', {
-                  start: startDate.toISOString(),
-                  end: endDate.toISOString()
-                });
               }
 
               if (currentFilters.vendor) {
@@ -1822,26 +1821,28 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
       // Get all payments for the current cycle
       const now = new Date();
-      const sixPMToday = new Date(now);
-      sixPMToday.setHours(18, 0, 0, 0);
-      const sixPMYesterday = new Date(sixPMToday);
-      sixPMYesterday.setDate(sixPMYesterday.getDate() - 1);
+      // Get today's date at 6 PM UTC
+      const todayAt6PMUTC = new Date();
+      todayAt6PMUTC.setUTCHours(12, 30, 0, 0); // 6 PM IST in UTC is 12:30 UTC
 
+      // If current time is after 6 PM IST, show payments after 6 PM today
+      // If current time is before 6 PM IST, show payments after 6 PM yesterday
+      const startTime = now > todayAt6PMUTC ?
+        todayAt6PMUTC :
+        new Date(todayAt6PMUTC.getTime() - 24 * 60 * 60 * 1000);
       const { data: payments, error: paymentsError } = await supabase
         .from('payments')
-        .select('payment_amount, status')
-        .gte('created_at', sixPMYesterday.toISOString())
-        .lte('created_at', sixPMToday.toISOString())
-        .eq('status', 'approved');
+        .select('payment_amount, status, created_at')
+        .gte('created_at', startTime.toISOString())
+        .lte('created_at', now.toISOString());
 
       if (paymentsError) {
         console.error('Error getting payments:', paymentsError);
         return;
       }
 
-      // Calculate total payment to initiate from approved payments
+      // Calculate total payment to initiate from all payments in the cycle
       const totalPaymentToInitiate = payments?.reduce((sum, p) => sum + (p.payment_amount || 0), 0) || 0;
-
       // Update the dashboard stats with new fund values
       set(state => ({
         ...state,

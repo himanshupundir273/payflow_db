@@ -12,7 +12,6 @@ interface AuthState {
   logout: () => Promise<void>;
   initializeAuth: () => Promise<void>;
   changePassword: (newPassword: string) => Promise<boolean>;
-  // switchRole: (role: UserRole) => void; // For demo purposes
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -155,32 +154,4 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     return result || false;
   },
-  
-  // This is just for demo purposes to easily switch between roles
-  // switchRole: async (role: UserRole) => {
-  //   try {
-  //     const { data: { user: authUser } } = await supabase.auth.getUser();
-      
-  //     if (!authUser) {
-  //       throw new Error('No authenticated user');
-  //     }
-
-  //     const { data, error } = await supabase
-  //       .from('users')
-  //       .update({ role })
-  //       .eq('id', authUser.id)
-  //       .select()
-  //       .single();
-
-  //     if (error) {
-  //       handleSupabaseError(error);
-  //       return;
-  //     }
-  //     set(state => ({
-  //       user: data
-  //     }));
-  //   } catch (error) {
-  //     console.error('Role switch error:', error);
-  //   }
-  // }
 }));

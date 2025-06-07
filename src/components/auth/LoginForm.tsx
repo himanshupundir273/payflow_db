@@ -7,18 +7,26 @@ import { Wallet, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { showErrorToast } from '../../lib/toast';
 
 const LoginForm: React.FC = () => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
   const { login } = useAuthStore();
   const navigate = useNavigate();
+
+  const isValidEmail = (email: string) => {
+    return email.includes('@');
+  };
+
+  const getEmailFromUsername = (input: string) => {
+    return isValidEmail(input) ? input : `${input}@atlantatelecables.com`;
+  };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email || !password) {
+    if (!username || !password) {
       showErrorToast('Please enter your credentials');
       return;
     }
@@ -26,37 +34,22 @@ const LoginForm: React.FC = () => {
     setIsLoading(true);
     
     try {
-      const success = await login(email, password);
+      const emailToUse = getEmailFromUsername(username);
+      const success = await login(emailToUse, password);
       
       if (success) {
         navigate('/dashboard');
       } else {
-        if (email.endsWith('@example.com')) {
-          showErrorToast('Invalid demo credentials');
-        } else {
-          showErrorToast('Invalid credentials');
-        }
+        showErrorToast('Invalid credentials');
       }
     } catch (err: any) {
       if (err?.message?.includes('Email not confirmed')) {
-        if (email.endsWith('@example.com')) {
-          showErrorToast('Demo login failed');
-        } else {
-          showErrorToast('Please confirm your email');
-        }
+        showErrorToast('Please confirm your email');
       } else {
         showErrorToast('Login failed');
       }
     } finally {
       setIsLoading(false);
-    }
-  };
-  
-  const handleDemoAccountClick = (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword('1234');
-    if(demoEmail === 'becky@abc.com') {
-      setPassword('123456');
     }
   };
   
@@ -79,16 +72,16 @@ const LoginForm: React.FC = () => {
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
               <Input
-                label="Email address"
-                id="email"
-                type="email"
-                autoComplete="email"
+                label="Username or Email"
+                id="username"
+                type="text"
+                autoComplete="username"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 fullWidth
                 leftIcon={<Mail className="h-5 w-5 text-gray-400" />}
-                placeholder="john@example.com"
+                placeholder="Enter username or email"
               />
             </div>
 
@@ -127,42 +120,6 @@ const LoginForm: React.FC = () => {
               >
                 Sign in
               </Button>
-            </div>
-            
-            <div className="text-sm text-center">
-              <p className="text-gray-600 mb-2">
-                Demo accounts:
-              </p>
-              <div className="flex justify-center space-x-4">
-                <button 
-                  type="button" 
-                  className="text-primary-600 hover:text-primary-500"
-                  onClick={() => handleDemoAccountClick('employee@example.com')}
-                >
-                  Alex
-                </button>
-                <button 
-                  type="button" 
-                  className="text-primary-600 hover:text-primary-500"
-                  onClick={() => handleDemoAccountClick('becky@abc.com')}
-                >
-                  Becky
-                </button>
-                <button 
-                  type="button" 
-                  className="text-primary-600 hover:text-primary-500"
-                  onClick={() => handleDemoAccountClick('admin@example.com')}
-                >
-                  Admin
-                </button>
-                <button 
-                  type="button" 
-                  className="text-primary-600 hover:text-primary-500"
-                  onClick={() => handleDemoAccountClick('accounts@example.com')}
-                >
-                  Accounts
-                </button>
-              </div>
             </div>
           </form>
         </div>

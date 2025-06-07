@@ -5,6 +5,7 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import { Plus, IndianRupee, Timer, ScaleIcon, X } from 'lucide-react';
 import { showSuccessToast, showErrorToast } from '../../lib/toast';
+import { format } from 'date-fns';
 
 const FundStats: React.FC = () => {
   const { user } = useAuthStore();
@@ -66,6 +67,20 @@ const FundStats: React.FC = () => {
     setFundAmount(formatNumber(value));
   };
 
+  // Add function to get cycle date range
+  const getCycleDateRange = () => {
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    return {
+      start: format(now, 'dd MMM'),
+      end: format(tomorrow, 'dd MMM')
+    };
+  };
+
+  const dateRange = getCycleDateRange();
+
   return (
     <>
       <div className="mb-4 space-y-4 lg:space-y-0">
@@ -100,7 +115,7 @@ const FundStats: React.FC = () => {
           <div className="bg-white rounded-lg shadow-sm p-6 transition-all hover:shadow-md">
             <div className="flex items-start justify-between">
               <div className="flex flex-col">
-                <span className="text-sm text-gray-500 mb-1">Pending Payments (Today's Cycle)</span>
+                <span className="text-sm text-gray-500 mb-1">Total Payments ({dateRange.start} - {dateRange.end})</span>
                 <span className="text-2xl font-semibold">
                   {formatCurrency(dashboardStats?.totalPaymentToInitiate || 0)}
                 </span>
