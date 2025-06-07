@@ -135,9 +135,9 @@ const PaymentsPage: React.FC = () => {
     ]
   );
 
-  const handleApprove = async (id: string) => {
+  const handleApprove = async (id: string, paymentAmount: number) => {
     if (!user) return;
-    await approvePayment(id, user);
+    await approvePayment(id, user, paymentAmount);
     // Refresh current page to reflect changes
     fetchPayments(
       pagination.page,
@@ -165,10 +165,9 @@ const PaymentsPage: React.FC = () => {
 
   const handleProcess = async (
     id: string,
-    invoiceReceived: 'yes' | 'no',
-    paymentAmount: number
+    invoiceReceived: 'yes' | 'no'
   ) => {
-    await markAsProcessed(id, invoiceReceived, paymentAmount);
+    await markAsProcessed(id, invoiceReceived);
     // Refresh current page to reflect changes
     fetchPayments(
       pagination.page,

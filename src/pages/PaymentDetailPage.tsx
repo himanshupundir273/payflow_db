@@ -195,12 +195,9 @@ const PaymentDetailPage: React.FC = () => {
     setIsProcessDialogOpen(true);
   };
 
-  const handleProcessSubmit = async (
-    invoiceReceived: 'yes' | 'no',
-    paymentAmount: number
-  ) => {
+  const handleProcessSubmit = async (invoiceReceived: 'yes' | 'no') => {
     if (!payment) return;
-    await markAsProcessed(payment.id, invoiceReceived, paymentAmount);
+    await markAsProcessed(payment.id, invoiceReceived);
     setIsProcessDialogOpen(false);
     // Navigate back to previous screen after processing
     navigate(-1);
@@ -833,7 +830,6 @@ const PaymentDetailPage: React.FC = () => {
           isOpen={isProcessDialogOpen}
           onClose={() => setIsProcessDialogOpen(false)}
           onSubmit={handleProcessSubmit}
-          currentPaymentAmount={payment?.paymentAmount || 0}
         />
       </div>
     </>

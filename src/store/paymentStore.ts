@@ -64,11 +64,11 @@ interface PaymentState {
   fetchDashboardPayments: () => Promise<PaymentRequest[]>;
   fetchDashboardStats: () => Promise<void>;
   addPayment: (payment: Omit<PaymentRequest, 'id' | 'serialNumber' | 'status' | 'createdAt' | 'updatedAt' | 'approvedBy'>) => Promise<PaymentRequest | null>;
-  approvePayment: (id: string, approver: User) => Promise<void>;
+  approvePayment: (id: string, approver: User, paymentAmount?: number) => Promise<boolean>;
   rejectPayment: (id: string, approver: User) => Promise<void>;
   bulkApprovePayments: (ids: string[], approver: User) => Promise<{success: string[], failed: string[]}>;
   bulkRejectPayments: (ids: string[], approver: User) => Promise<{success: string[], failed: string[]}>;
-  markAsProcessed: (id: string, invoiceReceived?: 'yes' | 'no', paymentAmount?: number) => Promise<void>;
+  markAsProcessed: (id: string, invoiceReceived?: 'yes' | 'no') => Promise<boolean>;
   markInvoiceReceived: (id: string) => Promise<boolean>;
   raiseQuery: (id: string, approver: User, query: string) => Promise<boolean>;
   raiseAccountsQuery: (id: string, accountsUser: User, query: string) => Promise<boolean>;
@@ -902,17 +902,36 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     return result;
   },
   
-  approvePayment: async (id: string, approver: User) => {
+  approvePayment: async (id: string, approver: User, paymentAmount?: number) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
+        // First get the current payment to check if payment amount is changing
+        const { data: currentPayment, error: fetchError } = await supabase
+          .from('payments')
+          .select('payment_amount')
+          .eq('id', id)
+          .single();
+
+        if (fetchError) throw fetchError;
+
+        const updateData: any = {
+          status: 'approved',
+          approved_by: approver.id,
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        // If payment amount is provided and different from current, store starting amount
+        if (paymentAmount !== undefined && paymentAmount !== currentPayment.payment_amount) {
+          updateData.starting_amount = currentPayment.payment_amount;
+          updateData.payment_amount = paymentAmount;
+        }
+
         const { data, error } = await supabase
           .from('payments')
-          .update({ 
-            status: 'approved',
-            approved_by: approver.id
-          })
+          .update(updateData)
           .eq('id', id)
           .select()
           .single();
@@ -923,25 +942,27 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
 
         const transformedPayment = await transformSinglePayment(data);
-        
-        set(state => ({
-          payments: state.payments.map(payment => 
+
+        set((state) => ({
+          payments: state.payments.map((payment) =>
             payment.id === id ? transformedPayment : payment
           ),
-          isLoading: false
+          isLoading: false,
         }));
-        
+
         get().applyFilters();
         return true;
       } catch (error) {
         console.error('Error approving payment:', error);
-        throw error;
+        return false;
       }
     }, 'Failed to approve payment. Please check your internet connection.');
 
     if (!result) {
       set({ isLoading: false });
     }
+
+    return result || false;
   },
   
   rejectPayment: async (id: string, approver: User) => {
@@ -1076,20 +1097,11 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     return result;
   },
   
-  markAsProcessed: async (id: string, invoiceReceived?: 'yes' | 'no', paymentAmount?: number) => {
+  markAsProcessed: async (id: string, invoiceReceived?: 'yes' | 'no') => {
     set({ isLoading: true });
     
     const result = await withNetworkCheck(async () => {
       try {
-        // First get the current payment to access total outstanding and current payment amount
-        const { data: currentPayment, error: fetchError } = await supabase
-          .from('payments')
-          .select('total_outstanding, payment_amount, status')
-          .eq('id', id)
-          .single();
-
-        if (fetchError) throw fetchError;
-        
         const updateData: any = { 
           status: 'processed',
           updated_at: new Date().toISOString()
@@ -1098,20 +1110,6 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         // Add optional fields if provided
         if (invoiceReceived !== undefined) {
           updateData.invoice_received = invoiceReceived;
-        }
-        
-        // Only update starting_amount when processing an approved payment and the amount is different
-        if (paymentAmount !== undefined && currentPayment.status === 'approved') {
-          // Check if the new payment amount is different from the current payment amount
-          if (paymentAmount !== currentPayment.payment_amount) {
-            // Store the current payment amount as starting_amount
-            updateData.starting_amount = currentPayment.payment_amount;
-          }
-          
-          // Update to the new payment amount
-          updateData.payment_amount = paymentAmount;
-          // Recalculate balance amount when payment amount changes
-          updateData.balance_amount = currentPayment.total_outstanding - paymentAmount;
         }
 
         const { data, error } = await supabase
@@ -1139,13 +1137,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         return true;
       } catch (error) {
         console.error('Error marking payment as processed:', error);
-        throw error;
+        return false;
       }
     }, 'Failed to mark payment as processed. Please check your internet connection.');
 
     if (!result) {
       set({ isLoading: false });
     }
+    
+    return result || false;
   },
   
   markInvoiceReceived: async (id: string) => {
