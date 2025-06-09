@@ -78,12 +78,15 @@ const BANK_OPTIONS = ['HDFC Bank', 'ICICI Bank'];
 
 const validationSchema = Yup.object().shape({
   vendorName: Yup.string().required('Vendor name is required'),
-  totalOutstanding: Yup.string()
-    .test('is-number', 'Must be a valid number', function(value) {
+  totalOutstanding: Yup.string().test(
+    'is-number',
+    'Must be a valid number',
+    function (value) {
       if (!value) return true; // Allow empty as it's optional
       const number = Number(value.replace(/,/g, ''));
       return !isNaN(number) && number >= 0;
-    }),
+    }
+  ),
   advanceDetails: Yup.string()
     .required('Advance details are required')
     .oneOf(
@@ -92,7 +95,7 @@ const validationSchema = Yup.object().shape({
     ),
   paymentAmount: Yup.string()
     .required('Payment amount is required')
-    .test('is-number', 'Must be a valid number', function(value) {
+    .test('is-number', 'Must be a valid number', function (value) {
       if (!value) return false;
       const number = Number(value.replace(/,/g, ''));
       return !isNaN(number) && number > 0;
@@ -284,14 +287,17 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
 
       setIsUploading(true);
 
-      const totalOutstanding = Number(values.totalOutstanding);
+      // Convert totalOutstanding properly - handle empty string case
+      const totalOutstandingValue = values.totalOutstanding
+        ? Number(values.totalOutstanding.replace(/,/g, ''))
+        : 0;
       const paymentAmount = Number(values.paymentAmount.replace(/,/g, ''));
-      const balanceAmount = totalOutstanding - paymentAmount;
+      const balanceAmount = totalOutstandingValue - paymentAmount;
 
       // Only submit vendor name, not account details
       const paymentData = {
         vendorName: values.vendorName, // Only vendor name is stored in payments table
-        totalOutstanding,
+        totalOutstanding: totalOutstandingValue,
         advanceDetails: values.advanceDetails,
         paymentAmount,
         balanceAmount,
@@ -686,17 +692,33 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                             {...field}
                             type="text"
                             value={field.value}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                              const formattedValue = formatNumber(e.target.value);
-                              form.setFieldValue('totalOutstanding', formattedValue);
+                            onChange={(
+                              e: React.ChangeEvent<HTMLInputElement>
+                            ) => {
+                              const formattedValue = formatNumber(
+                                e.target.value
+                              );
+                              form.setFieldValue(
+                                'totalOutstanding',
+                                formattedValue
+                              );
                             }}
                             onBlur={() => {
-                              const numericValue = field.value.replace(/,/g, '');
+                              const numericValue = field.value.replace(
+                                /,/g,
+                                ''
+                              );
                               if (numericValue && !isNaN(numericValue)) {
-                                form.setFieldValue('totalOutstanding', formatNumber(numericValue));
+                                form.setFieldValue(
+                                  'totalOutstanding',
+                                  formatNumber(numericValue)
+                                );
                               }
                             }}
-                            error={form.touched.totalOutstanding && form.errors.totalOutstanding}
+                            error={
+                              form.touched.totalOutstanding &&
+                              form.errors.totalOutstanding
+                            }
                             fullWidth
                           />
                         )}
@@ -792,18 +814,34 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                               {...field}
                               type="text"
                               value={field.value}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                                const formattedValue = formatNumber(e.target.value);
-                                form.setFieldValue('paymentAmount', formattedValue);
+                              onChange={(
+                                e: React.ChangeEvent<HTMLInputElement>
+                              ) => {
+                                const formattedValue = formatNumber(
+                                  e.target.value
+                                );
+                                form.setFieldValue(
+                                  'paymentAmount',
+                                  formattedValue
+                                );
                               }}
                               onBlur={() => {
                                 // On blur, ensure the value is a valid number
-                                const numericValue = field.value.replace(/,/g, '');
+                                const numericValue = field.value.replace(
+                                  /,/g,
+                                  ''
+                                );
                                 if (numericValue && !isNaN(numericValue)) {
-                                  form.setFieldValue('paymentAmount', formatNumber(numericValue));
+                                  form.setFieldValue(
+                                    'paymentAmount',
+                                    formatNumber(numericValue)
+                                  );
                                 }
                               }}
-                              error={form.touched.paymentAmount && form.errors.paymentAmount}
+                              error={
+                                form.touched.paymentAmount &&
+                                form.errors.paymentAmount
+                              }
                               fullWidth
                               required
                             />
@@ -811,7 +849,11 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                         </Field>
                       </div>
                       <p className="mt-1 text-sm text-gray-600 italic">
-                        {values.paymentAmount ? convertToIndianWords(Number(values.paymentAmount.replace(/,/g, ''))) : ''}
+                        {values.paymentAmount
+                          ? convertToIndianWords(
+                              Number(values.paymentAmount.replace(/,/g, ''))
+                            )
+                          : ''}
                       </p>
                     </div>
 
@@ -823,8 +865,12 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                         as={Input}
                         type="text"
                         value={(() => {
-                          const totalOutstanding = Number((values.totalOutstanding || '0').replace(/,/g, ''));
-                          const paymentAmount = Number((values.paymentAmount || '0').replace(/,/g, ''));
+                          const totalOutstanding = Number(
+                            (values.totalOutstanding || '0').replace(/,/g, '')
+                          );
+                          const paymentAmount = Number(
+                            (values.paymentAmount || '0').replace(/,/g, '')
+                          );
                           const balance = totalOutstanding - paymentAmount;
                           return balance.toLocaleString('en-IN');
                         })()}
