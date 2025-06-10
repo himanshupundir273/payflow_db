@@ -1,0 +1,10 @@
+create policy "Allow authenticated uploads 1mt4rzk_3" on storage.objects for DELETE to public using ((auth.role() = 'authenticated'::text));
+create policy "Allow authenticated uploads 1mt4rzk_1" on storage.objects for INSERT to public with check ((auth.role() = 'authenticated'::text));
+create policy "Allow authenticated uploads 1mt4rzk_2" on storage.objects for UPDATE to public using ((auth.role() = 'authenticated'::text));
+create policy "Allow authenticated uploads 1mt4rzk_0" on storage.objects for SELECT to public using ((auth.role() = 'authenticated'::text));
+create policy "Allow authenticated users to view attachments" on storage.objects for SELECT to authenticated using (((bucket_id = 'attachments'::text) AND (auth.uid() = owner)));
+create policy "Allow authenticated users to upload attachments" on storage.objects for INSERT to authenticated with check (((bucket_id = 'attachments'::text) AND (auth.uid() = owner)));
+create policy "Allow authenticated users to update their own attachments" on storage.objects for UPDATE to authenticated using (((bucket_id = 'attachments'::text) AND (auth.uid() = owner)));
+create policy "Allow authenticated users to delete their own attachments" on storage.objects for DELETE to authenticated using (((bucket_id = 'attachments'::text) AND (auth.uid() = owner)));
+create policy "Public read access" on storage.objects for SELECT to public using ((bucket_id = 'attachments'::text));
+create policy "Authenticated users can upload files" on storage.objects for INSERT to public with check (((bucket_id = 'attachments'::text) AND (auth.role() = 'authenticated'::text)));
