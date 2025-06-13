@@ -918,7 +918,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         const updateData: any = {
           status: 'approved',
           approved_by: approver.id,
-          approved_at: new Date().toISOString(),
+          // approved_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
 
