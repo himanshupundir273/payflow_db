@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { supabase } from '../lib/supabase';
 
 // Import company options
 const COMPANY_MAPPING = {
@@ -120,6 +121,25 @@ const ExportPage: React.FC = () => {
   const exportToExcel = async () => {
     setIsExporting(true);
     try {
+      // Fetch vendor details for all payments
+      const vendorIds = searchedPayments
+        .filter(p => p.vendorId)
+        .map(p => p.vendorId);
+      
+      const { data: vendors } = await supabase
+        .from('vendors')
+        .select('id, account_number, ifsc_code')
+        .in('id', vendorIds);
+
+      // Create a map of vendor details for quick lookup
+      const vendorDetails = vendors?.reduce((acc, vendor) => {
+        acc[vendor.id] = {
+          accountNumber: vendor.account_number,
+          ifscCode: vendor.ifsc_code
+        };
+        return acc;
+      }, {} as Record<string, { accountNumber: string; ifscCode: string }>) || {};
+
       // Prepare data for export
       const exportData = searchedPayments.map((payment, index) => {
         // Safely format dates
@@ -132,10 +152,15 @@ const ExportPage: React.FC = () => {
           }
         };
 
+        // Get vendor details if available
+        const vendorInfo = payment.vendorId ? vendorDetails[payment.vendorId] : null;
+
         return {
           'SR. No.': index + 1,
           'Date': formatDate(payment.date),
           'Vendor Name': payment.vendorName || 'N/A',
+          'Account Number': vendorInfo?.accountNumber || 'N/A',
+          'IFSC Code': vendorInfo?.ifscCode || 'N/A',
           'Total Outstanding': payment.totalOutstanding || 0,
           'Payment Amount': payment.paymentAmount || 0,
           'Balance Amount': payment.balanceAmount || 0,
