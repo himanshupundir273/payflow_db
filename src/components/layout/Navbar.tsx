@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { UserRole } from '../../types';
 import {
@@ -11,6 +11,7 @@ import {
   FileText,
   Lock,
   LayoutDashboard,
+  Download,
 } from 'lucide-react';
 import Button from '../ui/Button';
 import ChangePasswordDialog from '../auth/ChangePasswordDialog';
@@ -24,6 +25,7 @@ const roleNames: Record<UserRole, string> = {
 const Navbar: React.FC = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
@@ -92,7 +94,6 @@ const Navbar: React.FC = () => {
                     Dashboard
                   </Link>
 
-
                   {user.role === 'accounts' && (
                     <Link
                       to="/export"
@@ -156,13 +157,25 @@ const Navbar: React.FC = () => {
                 </div>
               ) : (
                 <div className="hidden sm:flex items-center space-x-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate('/login')}
-                  >
-                    Login
-                  </Button>
+                  {location.pathname !== '/download-app' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigate('/download-app')}
+                      icon={<Download className="h-4 w-4" />}
+                    >
+                      Download App
+                    </Button>
+                  )}
+                  {location.pathname !== '/login' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigate('/login')}
+                    >
+                      Login
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -192,102 +205,84 @@ const Navbar: React.FC = () => {
             {user ? (
               <>
                 <div className="px-4 py-2 flex items-center">
-                  <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-semibold">
+                  <div className="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700">
                     {user.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="ml-3">
-                    <div className="text-base font-medium text-gray-800">
+                    <div className="text-sm font-medium text-gray-700">
                       {user.name}
                     </div>
-                    <div className="text-sm font-medium text-gray-500">
-                      {user.email}
-                    </div>
+                    <div className="text-xs text-gray-500">{roleNames[user.role]}</div>
                   </div>
                 </div>
-
-                <div className="border-t border-gray-200 my-1"></div>
-
                 <Link
                   to="/dashboard"
-                  className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                  className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  <div className="flex items-center">
-                    <BarChart3 className="h-5 w-5 mr-2" />
-                    Dashboard
-                  </div>
+                  Dashboard
                 </Link>
-
-
                 {user.role === 'accounts' && (
                   <Link
                     to="/export"
-                    className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                    className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
                     onClick={() => setIsMenuOpen(false)}
                   >
-                    <div className="flex items-center">
-                      <FileText className="h-5 w-5 mr-2" />
-                      Export
-                    </div>
+                    Export
                   </Link>
                 )}
-
-                {user.role === 'accounts' && (
+                {user.role !== 'user' && (
                   <Link
                     to="/cms"
-                    className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                    className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
                     onClick={() => setIsMenuOpen(false)}
                   >
-                    <div className="flex items-center">
-                      <LayoutDashboard className="h-5 w-5 mr-2" />
-                      CMS
-                    </div>
+                    CMS
                   </Link>
                 )}
-
-                <div className="border-t border-gray-200 my-1"></div>
-
                 <button
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    setIsChangePasswordOpen(true);
-                  }}
-                  className="w-full flex items-center px-3 py-2 text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-md"
+                  onClick={handleChangePasswordClick}
+                  className="block w-full text-left px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
                 >
-                  <Lock className="h-5 w-5 mr-2" />
                   Change Password
                 </button>
-
                 <button
-                  onClick={() => {
-                    handleLogout();
-                    setIsMenuOpen(false);
-                  }}
-                  className="w-full flex items-center px-3 py-2 text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50 rounded-md"
+                  onClick={handleLogout}
+                  className="block w-full text-left px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
                 >
-                  <LogOut className="h-5 w-5 mr-2" />
                   Sign out
                 </button>
               </>
             ) : (
-              <div className="px-3 py-2">
-                <Button
-                  variant="primary"
-                  fullWidth
-                  onClick={() => {
-                    navigate('/login');
-                    setIsMenuOpen(false);
-                  }}
-                >
-                  Login
-                </Button>
-              </div>
+              <>
+                {location.pathname !== '/download-app' && (
+                  <button
+                    onClick={() => {
+                      navigate('/download-app');
+                      setIsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
+                  >
+                    Download App
+                  </button>
+                )}
+                {location.pathname !== '/login' && (
+                  <button
+                    onClick={() => {
+                      navigate('/login');
+                      setIsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
+                  >
+                    Login
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
       )}
 
-      {/* Change Password Dialog */}
       <ChangePasswordDialog
         isOpen={isChangePasswordOpen}
         onClose={() => setIsChangePasswordOpen(false)}
