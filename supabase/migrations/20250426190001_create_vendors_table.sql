@@ -7,6 +7,7 @@
       - name (text, unique)
       - account_number (text)
       - ifsc_code (text)
+      - added_by (uuid, references users(id))
       - created_at (timestamp)
       - updated_at (timestamp)
 
@@ -21,6 +22,7 @@ CREATE TABLE IF NOT EXISTS vendors (
   name text UNIQUE NOT NULL,
   account_number text NOT NULL,
   ifsc_code text NOT NULL,
+  added_by uuid REFERENCES users(id) NOT NULL,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );

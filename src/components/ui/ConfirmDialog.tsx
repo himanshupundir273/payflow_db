@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { ReactNode } from 'react';
 import Button from './Button';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
   title: string;
-  message: string;
+  message: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm: () => void;
@@ -34,10 +34,10 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className="inline-block transform overflow-hidden rounded-lg bg-white text-left align-bottom shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:align-middle">
           <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
             <div className="sm:flex sm:items-start">
-              <div className="mt-3 text-center sm:mt-0 sm:text-left">
+              <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
                 <h3 className="text-lg font-medium leading-6 text-gray-900">{title}</h3>
                 <div className="mt-2">
-                  <p className="text-sm text-gray-500">{message}</p>
+                  {message}
                 </div>
               </div>
             </div>

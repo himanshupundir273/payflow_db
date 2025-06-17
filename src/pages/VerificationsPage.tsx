@@ -6,7 +6,7 @@ import { Filter, X } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 
-const ApprovalsPage: React.FC = () => {
+const VerificationPage: React.FC = () => {
   const { user } = useAuthStore();
   const {
     payments,
@@ -19,14 +19,9 @@ const ApprovalsPage: React.FC = () => {
     filterOptions,
     setFilterOptions,
     setSearchTerm,
-    approvePayment,
-    rejectPayment,
-    bulkApprovePayments,
-    bulkRejectPayments,
-    markAsProcessed,
-    markInvoiceReceived,
     raiseQuery,
-    raiseAccountsQuery,
+    accountsVerifyPayment,
+    bulkAccountsVerifyPayments,
     resetFilterOptions,
   } = usePaymentStore();
 
@@ -37,24 +32,16 @@ const ApprovalsPage: React.FC = () => {
     if (user && payments.length === 0) {
       fetchPayments(1, 10, true, filterOptions);
     }
+    
   }, [user, fetchPayments]);
 
   // Set initial filter based on user role
   useEffect(() => {
-    if (user?.role === 'admin') {
-      // Admin can only see pending requests
-      resetFilterOptions({
-        status: ['pending'],
-        accountsVerificationStatus: [],
-      });
-    } else if (user?.role === 'accounts') {
-      // Accounts can only see approved requests
-      resetFilterOptions({
-        status: ['approved'],
-        accountsVerificationStatus: [],
-      });
-    }
-  }, [user?.role]);
+    resetFilterOptions({
+      status: ['pending'],
+      accountsVerificationStatus: ['pending']
+    });
+  }, []);
 
   const statusOptions = [
     { value: 'all', label: 'All Statuses' },
@@ -178,9 +165,9 @@ const ApprovalsPage: React.FC = () => {
     resetFilterOptions();
   };
 
-  const handleApprove = async (id: string, paymentAmount: number, reason: string) => {
+  const handleVerify = async (id: string) => {
     if (!user) return;
-    await approvePayment(id, user, paymentAmount, reason);
+    await accountsVerifyPayment(id);
     // Refresh current page to reflect changes
     fetchPayments(
       pagination.page,
@@ -192,81 +179,6 @@ const ApprovalsPage: React.FC = () => {
     );
   };
 
-  const handleReject = async (id: string) => {
-    if (!user) return;
-    await rejectPayment(id, user);
-    // Refresh current page to reflect changes
-    fetchPayments(
-      pagination.page,
-      pagination.pageSize,
-      true,
-      filterOptions,
-      sortOptions,
-      searchTerm
-    );
-  };
-
-  const handleBulkApprove = async (ids: string[]) => {
-    if (!user) return;
-    const result = await bulkApprovePayments(ids, user);
-
-    if (result.success.length > 0) {
-      console.log(`Successfully approved ${result.success.length} payments`);
-    }
-    if (result.failed.length > 0) {
-      console.error(`Failed to approve ${result.failed.length} payments`);
-    }
-
-    // Refresh current page to reflect changes
-    fetchPayments(
-      pagination.page,
-      pagination.pageSize,
-      true,
-      filterOptions,
-      sortOptions,
-      searchTerm
-    );
-  };
-
-  const handleBulkReject = async (ids: string[]) => {
-    if (!user) return;
-    const result = await bulkRejectPayments(ids, user);
-
-    if (result.success.length > 0) {
-      console.log(`Successfully rejected ${result.success.length} payments`);
-    }
-    if (result.failed.length > 0) {
-      console.error(`Failed to reject ${result.failed.length} payments`);
-    }
-
-    // Refresh current page to reflect changes
-    fetchPayments(
-      pagination.page,
-      pagination.pageSize,
-      true,
-      filterOptions,
-      sortOptions,
-      searchTerm
-    );
-  };
-
-  const handleProcess = async (
-    id: string,
-    invoiceReceived: 'yes' | 'no',
-    paymentAmount: number,
-    reason: string
-  ) => {
-    await markAsProcessed(id, invoiceReceived, paymentAmount, reason);
-    // Refresh current page to reflect changes
-    fetchPayments(
-      pagination.page,
-      pagination.pageSize,
-      true,
-      filterOptions,
-      sortOptions,
-      searchTerm
-    );
-  };
 
   const handleQuery = async (id: string, query: string) => {
     if (!user) return;
@@ -282,22 +194,17 @@ const ApprovalsPage: React.FC = () => {
     );
   };
 
-  const handleAccountsQuery = async (id: string, query: string) => {
+  const handleBulkAccountsVerify = async (ids: string[]) => {
     if (!user) return;
-    await raiseAccountsQuery(id, user, query);
-    // Refresh current page to reflect changes
-    fetchPayments(
-      pagination.page,
-      pagination.pageSize,
-      true,
-      filterOptions,
-      sortOptions,
-      searchTerm
-    );
-  };
+    const result = await bulkAccountsVerifyPayments(ids);
 
-  const handleMarkInvoiceReceived = async (id: string) => {
-    await markInvoiceReceived(id);
+    if (result.success.length > 0) {
+      console.log(`Successfully processed ${result.success.length} payments`);
+    }
+    if (result.failed.length > 0) {
+      console.error(`Failed to process ${result.failed.length} payments`);
+    }
+
     // Refresh current page to reflect changes
     fetchPayments(
       pagination.page,
@@ -314,12 +221,10 @@ const ApprovalsPage: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            Payment Approvals
+            Payment Verification
           </h1>
           <p className="text-sm text-gray-500">
-            {user?.role === 'admin'
-              ? 'Review and approve pending payment requests'
-              : 'Process approved payments'}
+            Review and verify payment requests
           </p>
         </div>
 
@@ -356,14 +261,13 @@ const ApprovalsPage: React.FC = () => {
                   <button
                     key={option.value}
                     onClick={() => handleStatusFilterChange(option.value)}
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      (option.value === 'all' &&
+                    className={`px-3 py-1 rounded-full text-sm font-medium ${(option.value === 'all' &&
                         filterOptions.status.length === 0) ||
-                      (option.value !== 'all' &&
-                        filterOptions.status.includes(option.value))
+                        (option.value !== 'all' &&
+                          filterOptions.status.includes(option.value))
                         ? 'bg-primary-100 text-primary-800'
                         : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                    }`}
+                      }`}
                   >
                     {option.label}
                     {option.value !== 'all' &&
@@ -393,27 +297,18 @@ const ApprovalsPage: React.FC = () => {
       <PaymentTable
         payments={filteredPayments}
         detailNav={true}
-        source = {'/approvals'}
+        source='/dashboard/verifications'
         isLoading={isLoading}
         showActions={true}
-        onApprove={user?.role === 'admin' ? handleApprove : undefined}
-        onReject={user?.role === 'admin' ? handleReject : undefined}
-        onBulkApprove={user?.role === 'admin' ? handleBulkApprove : undefined}
-        onBulkReject={user?.role === 'admin' ? handleBulkReject : undefined}
-        enableBulkSelection={user?.role === 'admin'}
+        onVerify={handleVerify}
+        onQuery={handleQuery}
+        onBulkAccountsVerify={handleBulkAccountsVerify}
+        enableBulkSelection={user?.role === 'accounts'}
         maxSelections={10}
-        onProcess={user?.role === 'accounts' ? handleProcess : undefined}
-        onQuery={user?.role === 'admin' ? handleQuery : undefined}
-        onAccountsQuery={
-          user?.role === 'accounts' ? handleAccountsQuery : undefined
-        }
-        onMarkInvoiceReceived={
-          user?.role === 'accounts' ? handleMarkInvoiceReceived : undefined
-        }
         serverPagination={serverPaginationConfig}
       />
     </div>
   );
 };
 
-export default ApprovalsPage;
+export default VerificationPage; 

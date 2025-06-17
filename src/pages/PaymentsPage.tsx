@@ -26,6 +26,7 @@ const PaymentsPage: React.FC = () => {
     filterOptions,
     setFilterOptions,
     setSearchTerm,
+    resetFilterOptions,
   } = usePaymentStore();
   const navigate = useNavigate();
 
@@ -38,6 +39,16 @@ const PaymentsPage: React.FC = () => {
       fetchPayments(1, 10, true);
     }
   }, [user, fetchPayments]);
+
+  // Reset filter options when component mounts, but only if not coming from dashboard
+  React.useEffect(() => {
+    // Check if we're coming from dashboard by looking at the filter options
+    const hasDashboardFilters = filterOptions.status.length > 0 ;
+    console.log(filterOptions,filterOptions.status.length)
+    if (!hasDashboardFilters) {
+      resetFilterOptions();
+    }
+  }, []);
 
   const statusOptions = [
     { value: 'all', label: 'All Statuses' },
@@ -165,9 +176,11 @@ const PaymentsPage: React.FC = () => {
 
   const handleProcess = async (
     id: string,
-    invoiceReceived: 'yes' | 'no'
+    invoiceReceived: 'yes' | 'no',
+    paymentAmount: number,
+    reason: string
   ) => {
-    await markAsProcessed(id, invoiceReceived);
+    await markAsProcessed(id, invoiceReceived, paymentAmount, reason);
     // Refresh current page to reflect changes
     fetchPayments(
       pagination.page,
@@ -243,17 +256,8 @@ const PaymentsPage: React.FC = () => {
   };
 
   const clearFilters = () => {
-    setFilterOptions({
-      status: [],
-      dateRange: { start: null, end: null },
-      vendor: null,
-      company: null,
-      companyList: null,
-      overdueInvoices: false,
-      hasAccountsQuery: false,
-    });
+    resetFilterOptions();
   };
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
@@ -344,7 +348,7 @@ const PaymentsPage: React.FC = () => {
       <PaymentTable
         payments={filteredPayments}
         isLoading={isLoading}
-        showActions={true}
+        showActions={false}
         onApprove={user?.role === 'admin' ? handleApprove : undefined}
         onReject={user?.role === 'admin' ? handleReject : undefined}
         onProcess={user?.role === 'accounts' ? handleProcess : undefined}

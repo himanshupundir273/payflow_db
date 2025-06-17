@@ -25,7 +25,9 @@ dist-ssr
 
 # Environment variables
 .env
+.env.production
+.env.development
 android
 ios
 .bolt
-supabase/create
+supabase/.temp

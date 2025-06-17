@@ -1,85 +1,20 @@
 import { create } from 'zustand';
-import { PaymentRequest, FilterOptions, User } from '../types';
+import { PaymentRequest, FilterOptions, User, DashboardStats, PaymentState } from '../types';
 import { supabase, handleSupabaseError } from '../lib/supabase';
 import type { Database } from '../types/supabase';
-import { showSuccessToast, showErrorToast, showLoadingToast, dismissToast } from '../lib/toast';
+import { showSuccessToast, showErrorToast } from '../lib/toast';
 import { withNetworkCheck } from '../lib/network';
 
 type PaymentRow = Database['public']['Tables']['payments']['Row'];
 type PaymentInsert = Database['public']['Tables']['payments']['Insert'];
 
-interface DashboardStats {
-  total: number;
-  pending: number;
-  approved: number;
-  rejected: number;
-  processed: number;
-  queryRaised: number;
-  accountsQueriesRaised: number;
-  overdueAdvanceInvoices: number;
-  totalAmount: number;
-  pendingAmount: number;
-  totalFundAvailable: number;
-  totalPaymentToInitiate: number;
-  netFundAvailable: number;
-  dayId: string;
-}
-
-interface PaginationOptions {
-  page: number;
-  pageSize: number;
-  totalCount: number;
-  totalPages: number;
-}
 
 interface SortOptions {
   field: string;
   direction: 'asc' | 'desc';
 }
 
-interface PaymentState {
-  payments: PaymentRequest[];
-  filteredPayments: PaymentRequest[];
-  filterOptions: FilterOptions;
-  isLoading: boolean;
-  dashboardStats: DashboardStats | null;
-  pagination: PaginationOptions;
-  sortOptions: SortOptions;
-  searchTerm: string;
-  
-  // New functions for fund tracking
-  addFund: (amount: number) => Promise<void>;
-  getFundStats: () => Promise<void>;
-  
-  // Actions
-  fetchPayments: (
-    page?: number, 
-    pageSize?: number, 
-    forceRefresh?: boolean, 
-    filters?: Partial<FilterOptions>, 
-    sortOptions?: SortOptions, 
-    searchTerm?: string
-  ) => Promise<{ payments: PaymentRequest[] } | null>;
-  fetchPaymentById: (id: string) => Promise<PaymentRequest | null>;
-  fetchDashboardPayments: () => Promise<PaymentRequest[]>;
-  fetchDashboardStats: () => Promise<void>;
-  addPayment: (payment: Omit<PaymentRequest, 'id' | 'serialNumber' | 'status' | 'createdAt' | 'updatedAt' | 'approvedBy'>) => Promise<PaymentRequest | null>;
-  approvePayment: (id: string, approver: User, paymentAmount?: number) => Promise<boolean>;
-  rejectPayment: (id: string, approver: User) => Promise<void>;
-  bulkApprovePayments: (ids: string[], approver: User) => Promise<{success: string[], failed: string[]}>;
-  bulkRejectPayments: (ids: string[], approver: User) => Promise<{success: string[], failed: string[]}>;
-  markAsProcessed: (id: string, invoiceReceived?: 'yes' | 'no') => Promise<boolean>;
-  markInvoiceReceived: (id: string) => Promise<boolean>;
-  raiseQuery: (id: string, approver: User, query: string) => Promise<boolean>;
-  raiseAccountsQuery: (id: string, accountsUser: User, query: string) => Promise<boolean>;
-  setFilterOptions: (options: Partial<FilterOptions>) => void;
-  setSearchTerm: (searchTerm: string) => void;
-  applyFilters: () => void;
-  exportToExcel: () => void;
-  updatePayment: (id: string, paymentData: Partial<PaymentRequest>) => Promise<boolean>;
-  filterOverdueAdvanceInvoices: () => void;
-  filterAccountsQueries: () => void;
-}
+
 
 // Cache for users to avoid repeated fetches
 const usersCache = new Map<string, any>();
@@ -95,13 +30,21 @@ const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
   const rejected = payments.filter(p => p.status === 'rejected').length;
   const processed = payments.filter(p => p.status === 'processed').length;
   const queryRaised = payments.filter(p => p.status === 'query_raised').length;
-  const accountsQueriesRaised = payments.filter(p => p.accounts_query && p.accounts_query.trim() !== '').length;
+  const accountsQueriesRaised = payments.filter(p => 
+    p.status === 'approved' && 
+    p.accounts_query && 
+    p.accounts_query.trim() !== ''
+  ).length;
+  const pendingAccountsVerifications = payments.filter(p =>
+    p.status === 'pending' &&
+    p.accounts_verification_status === 'pending'
+  ).length;
 
   // Calculate overdue advance invoices
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-  const overdueAdvanceInvoices = payments.filter(p => 
+  const overdueAdvanceInvoices = payments.filter(p =>
     p.status === 'processed' &&
     (p.advance_details === 'advance' || p.advance_details === 'advance_(bill/PI)') &&
     (!p.invoice_received || p.invoice_received === 'no') &&
@@ -122,13 +65,13 @@ const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
   const totalPaymentToInitiate = payments
     .filter(p => {
       const createdAtUTC = new Date(p.created_at);
-      
+
       // If current time is after 6 PM IST, show payments after 6 PM today
       // If current time is before 6 PM IST, show payments after 6 PM yesterday
       const startTime = now > todayAt6PMUTC ?
         todayAt6PMUTC :
         new Date(todayAt6PMUTC.getTime() - 24 * 60 * 60 * 1000);
-      
+
       return createdAtUTC >= startTime;
     })
     .reduce((sum, p) => sum + p.payment_amount, 0);
@@ -149,219 +92,59 @@ const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
     totalFundAvailable: 0, // Will be set by getFundStats
     totalPaymentToInitiate,
     netFundAvailable: 0, // Will be set by getFundStats
-    dayId: '' // Will be set by getFundStats
+    dayId: '', // Will be set by getFundStats
+    pendingAccountsVerifications
   };
 };
 
 // Helper function to transform a single payment (for operations that update individual payments)
 const transformSinglePayment = async (row: PaymentRow): Promise<PaymentRequest> => {
-  try {
-    // Fetch the requestedBy user
-    let requestedByUser;
-    if (usersCache.has(row.requested_by)) {
-      requestedByUser = usersCache.get(row.requested_by);
-    } else {
-      const { data: userData, error: requestedByError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', row.requested_by)
-        .single();
+  // Fetch related data
+  const [requestedByUser, approvedByUser] = await Promise.all([
+    supabase.from('users').select('*').eq('id', row.requested_by).single(),
+    row.approved_by
+      ? supabase.from('users').select('*').eq('id', row.approved_by).single()
+      : Promise.resolve({ data: null }),
+  ]);
 
-      if (requestedByError) {
-        console.error('Error fetching requestedBy user:', requestedByError);
-        requestedByUser = {
-          id: row.requested_by,
-          email: 'unknown@example.com',
-          name: 'Unknown User',
-          role: 'user',
-          company: 'Unknown Company'
-        };
-      } else {
-        requestedByUser = userData;
-        usersCache.set(row.requested_by, userData);
-      }
-    }
-
-    // Fetch the approvedBy user if it exists
-    let approvedByUser = null;
-    if (row.approved_by) {
-      if (usersCache.has(row.approved_by)) {
-        approvedByUser = usersCache.get(row.approved_by);
-      } else {
-        const { data: approvedBy, error: approvedByError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', row.approved_by)
-          .single();
-
-        if (approvedByError) {
-          console.error('Error fetching approvedBy user:', approvedByError);
-          approvedByUser = {
-            id: row.approved_by,
-            email: 'unknown@example.com',
-            name: 'Unknown User',
-            role: 'user',
-            company: 'Unknown Company'
-          };
-        } else {
-          approvedByUser = approvedBy;
-          usersCache.set(row.approved_by, approvedBy);
-        }
-      }
-    }
-
-    // Fetch bills for this payment
-    const { data: bills, error: billsError } = await supabase
-      .from('bills')
-      .select('*')
-      .eq('payment_id', row.id);
-
-    if (billsError) {
-      console.error('Error fetching bills:', billsError);
-      throw billsError;
-    }
-
-    // Fetch attachments for this payment
-    const { data: attachments, error: attachmentsError } = await supabase
-      .from('attachments')
-      .select('*')
-      .eq('payment_id', row.id);
-
-    if (attachmentsError) {
-      console.error('Error fetching attachments:', attachmentsError);
-      throw attachmentsError;
-    }
-
-    return {
-      id: row.id,
-      serialNumber: row.serial_number,
-      date: row.date,
-      vendorName: row.vendor_name,
-      totalOutstanding: row.total_outstanding,
-      advanceDetails: row.advance_details as 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others',
-      paymentAmount: row.payment_amount,
-      balanceAmount: row.balance_amount,
-      itemDescription: row.item_description,
-      bills: bills?.map(bill => ({
-        id: bill.id,
-        billNumber: bill.bill_number,
-        billDate: bill.bill_date,
-        createdAt: bill.created_at,
-        updatedAt: bill.updated_at
-      })) || [],
-      attachments: attachments?.map(attachment => ({
-        id: attachment.id,
-        description: attachment.description,
-        fileUrl: attachment.file_url,
-        fileName: attachment.file_name,
-        fileType: attachment.file_type,
-        fileSize: attachment.file_size,
-        createdAt: attachment.created_at,
-        updatedAt: attachment.updated_at
-      })) || [],
-      requestedBy: requestedByUser,
-      approvedBy: approvedByUser,
-      companyName: row.company_name,
-      companyBranch: row.company_branch,
-      bankName: row.bank_name,
-      paymentMode: row.payment_mode as 'net_banking' | 'upi',
-      status: row.status,
-      queryDetails: row.query_details || undefined,
-      accountsQuery: row.accounts_query || undefined,
-      lpr: row.lpr || undefined,
-      ioa: row.ioa || undefined,
-      cpp: row.cpp || undefined,
-      invoiceReceived: row.invoice_received || undefined,
-      startingAmount: row.starting_amount || undefined,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  } catch (error) {
-    console.error('Error in transformSinglePayment:', error);
-    throw error;
-  }
-};
-
-// Optimized function to transform payment data with batched user fetching
-const transformPaymentsWithBatchedData = async (
-  rows: PaymentRow[],
-  usersMap: Map<string, any>,
-  billsMap: Map<string, any[]>,
-  attachmentsMap: Map<string, any[]>
-): Promise<PaymentRequest[]> => {
-  return rows.map(row => {
-    // Get requestedBy user from cache
-    const requestedByUser = usersMap.get(row.requested_by) || {
-      id: row.requested_by,
-      email: 'unknown@example.com',
-      name: 'Unknown User',
-      role: 'user',
-      company: 'Unknown Company'
-    };
-
-    // Get approvedBy user from cache if exists
-    let approvedByUser = null;
-    if (row.approved_by) {
-      approvedByUser = usersMap.get(row.approved_by) || {
-        id: row.approved_by,
-        email: 'unknown@example.com',
-        name: 'Unknown User',
-        role: 'user',
-        company: 'Unknown Company'
-      };
-    }
-
-    // Get bills from cache
-    const bills = billsMap.get(row.id) || [];
-
-    // Get attachments from cache
-    const attachments = attachmentsMap.get(row.id) || [];
-
-    return {
-      id: row.id,
-      serialNumber: row.serial_number,
-      date: row.date,
-      vendorName: row.vendor_name,
-      totalOutstanding: row.total_outstanding,
-      advanceDetails: row.advance_details as 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others',
-      paymentAmount: row.payment_amount,
-      balanceAmount: row.balance_amount,
-      itemDescription: row.item_description,
-      bills: bills.map(bill => ({
-        id: bill.id,
-        billNumber: bill.bill_number,
-        billDate: bill.bill_date,
-        createdAt: bill.created_at,
-        updatedAt: bill.updated_at
-      })),
-      attachments: attachments.map(attachment => ({
-        id: attachment.id,
-        description: attachment.description,
-        fileUrl: attachment.file_url,
-        fileName: attachment.file_name,
-        fileType: attachment.file_type,
-        fileSize: attachment.file_size,
-        createdAt: attachment.created_at,
-        updatedAt: attachment.updated_at
-      })),
-      requestedBy: requestedByUser,
-      approvedBy: approvedByUser,
-      companyName: row.company_name,
-      companyBranch: row.company_branch,
-      bankName: row.bank_name,
-      paymentMode: row.payment_mode as 'net_banking' | 'upi',
-      status: row.status,
-      queryDetails: row.query_details || undefined,
-      accountsQuery: row.accounts_query || undefined,
-      lpr: row.lpr || undefined,
-      ioa: row.ioa || undefined,
-      cpp: row.cpp || undefined,
-      invoiceReceived: row.invoice_received || undefined,
-      startingAmount: row.starting_amount || undefined,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at
-    };
-  });
+  return {
+    id: row.id,
+    serialNumber: row.serial_number,
+    date: row.date,
+    vendorName: row.vendor_name,
+    vendorId: row.vendor_id,
+    totalOutstanding: row.total_outstanding,
+    advanceDetails: row.advance_details as 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others',
+    paymentAmount: row.payment_amount,
+    balanceAmount: row.balance_amount,
+    itemDescription: row.item_description,
+    bills: [], // Empty - will be fetched on demand
+    attachments: [], // Empty - will be fetched on demand
+    requestedBy: requestedByUser.data!,
+    approvedBy: approvedByUser.data,
+    companyName: row.company_name,
+    companyBranch: row.company_branch,
+    bankName: row.bank_name,
+    paymentMode: row.payment_mode as 'net_banking' | 'upi',
+    status: row.status,
+    queryDetails: row.query_details || undefined,
+    accountsQuery: row.accounts_query || undefined,
+    accountsVerificationStatus: row.accounts_verification_status || 'pending',
+    lpr: row.lpr || undefined,
+    ioa: row.ioa || undefined,
+    cpp: row.cpp || undefined,
+    invoiceReceived: row.invoice_received || undefined,
+    startingAmount: row.starting_amount || undefined,
+    quantityCheckedBy: row.quantity_checked_by || undefined,
+    qualityCheckedBy: row.quality_checked_by || undefined,
+    purchaseOwner: row.purchase_owner || undefined,
+    priceCheckGuaranteedBy: row.price_check_guaranteed_by || undefined,
+    categoryId: row.category_id || undefined,
+    subcategoryId: row.subcategory_id || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    amountChangeReason: row.amount_change_reason || undefined,
+  };
 };
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
@@ -392,17 +175,17 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     direction: 'desc',
   },
   searchTerm: '',
-  
+
   fetchPayments: async (page?: number, pageSize?: number, forceRefresh?: boolean, filters?: Partial<FilterOptions>, sortOptions?: SortOptions, searchTerm?: string) => {
     // Prevent concurrent calls
     if (isFetching && !forceRefresh) {
       console.log('fetchPayments already in progress, skipping duplicate call');
       return null;
     }
-    
+
     isFetching = true;
     set({ isLoading: true });
-    
+
     try {
       const result = await withNetworkCheck(async () => {
         try {
@@ -410,23 +193,23 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           const currentPagination = get().pagination;
           const currentPage = page ?? currentPagination.page;
           const currentPageSize = pageSize ?? currentPagination.pageSize;
-          
+
           // Use provided filters or current filter options
           const currentFilters = filters ?? get().filterOptions;
-          
+
           // Use provided sort options or current sort options
           const currentSortOptions = sortOptions ?? get().sortOptions;
-          
+
           // Use provided search term or current search term
           const currentSearchTerm = searchTerm ?? get().searchTerm;
-          
+
           // Update sort options in state if provided
           if (sortOptions) {
             set(state => ({
               sortOptions: sortOptions
             }));
           }
-          
+
           // Update search term in state if provided
           if (searchTerm !== undefined) {
             set(state => ({
@@ -449,7 +232,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             };
             return fieldMapping[field] || 'created_at';
           };
-          
+
           // Get the current user's role
           const { data: { user: authUser } } = await supabase.auth.getUser();
           if (!authUser) {
@@ -480,7 +263,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             // Apply search functionality
             if (currentSearchTerm && currentSearchTerm.trim() !== '') {
               const searchValue = currentSearchTerm.trim();
-              
+
               // Build multiple OR conditions for text search
               const textSearchConditions = [
                 `vendor_name.ilike.%${searchValue}%`,
@@ -490,12 +273,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
                 `status.ilike.%${searchValue}%`,
                 `advance_details.ilike.%${searchValue}%`
               ];
-              
+
               // If the search term is a number, also search by serial number
               if (!isNaN(Number(searchValue))) {
                 textSearchConditions.push(`serial_number.eq.${Number(searchValue)}`);
               }
-              
+
               query = query.or(textSearchConditions.join(','));
             }
 
@@ -503,7 +286,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             if (currentFilters.overdueInvoices) {
               const oneWeekAgo = new Date();
               oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-              
+
               query = query
                 .eq('status', 'processed')
                 .in('advance_details', ['advance', 'advance_(bill/PI)'])
@@ -519,7 +302,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               if (currentFilters.dateRange?.start && currentFilters.dateRange?.end) {
                 const startDate = new Date(currentFilters.dateRange.start);
                 startDate.setUTCHours(0, 0, 0, 0);
-                
+
                 const endDate = new Date(currentFilters.dateRange.end);
                 endDate.setUTCHours(23, 59, 59, 999);
 
@@ -546,7 +329,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
               // Apply accounts query filter
               if (currentFilters.hasAccountsQuery) {
-                query = query.not('accounts_query', 'is', null);
+                query = query.not('accounts_query', 'is', null)
+                           .not('accounts_query', 'eq', '');
+              }
+
+              // Apply accounts verification status filter
+              if (currentFilters.accountsVerificationStatus && currentFilters.accountsVerificationStatus.length > 0) {
+                console.log(currentFilters)
+                query = query.in('accounts_verification_status', currentFilters.accountsVerificationStatus);
               }
             }
 
@@ -602,7 +392,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           }));
 
           if (!rows || rows.length === 0) {
-            set({ 
+            set({
               payments: forceRefresh ? [] : get().payments,
               filteredPayments: forceRefresh ? [] : get().filteredPayments,
               isLoading: false,
@@ -623,7 +413,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
           // Batch fetch all users
           const uncachedUserIds = Array.from(userIds).filter(id => !usersCache.has(id));
-          
+
           if (uncachedUserIds.length > 0) {
             const { data: users, error: usersError } = await supabase
               .from('users')
@@ -673,6 +463,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               serialNumber: row.serial_number,
               date: row.date,
               vendorName: row.vendor_name,
+              vendorId: row.vendor_id,
               totalOutstanding: row.total_outstanding,
               advanceDetails: row.advance_details as 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others',
               paymentAmount: row.payment_amount,
@@ -689,13 +480,21 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               status: row.status,
               queryDetails: row.query_details || undefined,
               accountsQuery: row.accounts_query || undefined,
+              accountsVerificationStatus: row.accounts_verification_status || 'pending',
               lpr: row.lpr || undefined,
               ioa: row.ioa || undefined,
               cpp: row.cpp || undefined,
               invoiceReceived: row.invoice_received || undefined,
               startingAmount: row.starting_amount || undefined,
+              quantityCheckedBy: row.quantity_checked_by || undefined,
+              qualityCheckedBy: row.quality_checked_by || undefined,
+              purchaseOwner: row.purchase_owner || undefined,
+              priceCheckGuaranteedBy: row.price_check_guaranteed_by || undefined,
+              categoryId: row.category_id || undefined,
+              subcategoryId: row.subcategory_id || undefined,
               createdAt: row.created_at,
-              updatedAt: row.updated_at
+              updatedAt: row.updated_at,
+              amountChangeReason: row.amount_change_reason || undefined,
             };
           });
 
@@ -722,7 +521,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
           // Preserve fund stats if they exist
           const currentStats = get().dashboardStats;
-          set({ 
+          set({
             payments: newPayments,
             filteredPayments: newPayments,
             isLoading: false,
@@ -734,10 +533,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               dayId: currentStats?.dayId ?? ''
             }
           });
-          
+
           // Return the payments array
           return { payments: newPayments };
-          
+
         } catch (error) {
           console.error('Error in fetchPayments:', error);
           throw error;
@@ -756,41 +555,92 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       isFetching = false;
     }
   },
-  
+
   fetchDashboardStats: async () => {
-    // Stats are now calculated during fetchPayments to avoid duplicate API calls
-    // This function is kept for backwards compatibility but doesn't make additional calls
-    const { payments, dashboardStats } = get();
-    
-    if (dashboardStats) {
-      // Stats already available, no need for additional API call
-      console.log('Dashboard stats already available, skipping redundant API call');
-      return;
+    try {
+      await withNetworkCheck(async () => {
+        try {
+          // Get the current user's role
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          if (!authUser) {
+            console.log('No authenticated user found');
+            return;
+          }
+
+          // Get user role (minimal query)
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', authUser.id)
+            .single();
+
+          if (userError) {
+            console.error('Error fetching user role:', userError);
+            return;
+          }
+
+          // Build query for all payments (no filters)
+          let query = supabase
+            .from('payments')
+            .select('*');
+
+          // Apply role-based filtering only
+          if (userData.role !== 'admin' && userData.role !== 'accounts') {
+            query = query.eq('requested_by', authUser.id);
+          }
+
+          // Get all payments for accurate stats
+          const { data: rows, error } = await query
+            .order('created_at', { ascending: false });
+
+          if (error) {
+            console.error('Error fetching dashboard stats:', error);
+            return;
+          }
+
+          if (!rows || rows.length === 0) {
+            set({ dashboardStats: calculateDashboardStats([]) });
+            return;
+          }
+
+          // Calculate stats from fresh data
+          const stats = calculateDashboardStats(rows);
+
+          // Get fund stats
+          const { data: currentDayId } = await supabase.rpc('get_current_day_id');
+          if (currentDayId) {
+            const { data: funds } = await supabase
+              .from('funds')
+              .select('amount')
+              .eq('day_id', currentDayId);
+
+            const totalFundAvailable = funds?.reduce((sum, fund) => sum + (fund.amount || 0), 0) || 0;
+
+            // Update stats with fund information
+            set({
+              dashboardStats: {
+                ...stats,
+                totalFundAvailable,
+                netFundAvailable: totalFundAvailable - stats.totalPaymentToInitiate,
+                dayId: currentDayId
+              }
+            });
+          } else {
+            set({ dashboardStats: stats });
+          }
+        } catch (error) {
+          console.error('Error in fetchDashboardStats:', error);
+          throw error;
+        }
+      }, 'Failed to fetch dashboard stats. Please check your internet connection.');
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
     }
-    
-    if (payments.length > 0) {
-      // If payments are loaded but stats aren't available, recalculate from existing data
-      const rawPayments = payments.map(p => ({
-        status: p.status,
-        advance_details: p.advanceDetails,
-        invoice_received: p.invoiceReceived,
-        payment_amount: p.paymentAmount,
-        updated_at: p.updatedAt
-      })) as PaymentRow[];
-      
-      const stats = calculateDashboardStats(rawPayments);
-      set({ dashboardStats: stats });
-      return;
-    }
-    
-    // If no payments are loaded, fetch them (which will also calculate stats)
-    console.log('No payments loaded, calling fetchPayments to get data and stats');
-    await get().fetchPayments();
   },
-  
+
   addPayment: async (paymentData) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -800,6 +650,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         const newPayment: PaymentInsert = {
           date: paymentData.date,
           vendor_name: paymentData.vendorName,
+          vendor_id: paymentData.vendorId,
           total_outstanding: paymentData.totalOutstanding,
           advance_details: paymentData.advanceDetails,
           payment_amount: paymentData.paymentAmount,
@@ -814,7 +665,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           lpr: paymentData.lpr,
           ioa: paymentData.ioa,
           cpp: paymentData.cpp,
-          invoice_received: paymentData.invoiceReceived,
+          quantity_checked_by: paymentData.quantityCheckedBy,
+          quality_checked_by: paymentData.qualityCheckedBy,
+          purchase_owner: paymentData.purchaseOwner,
+          price_check_guaranteed_by: paymentData.priceCheckGuaranteedBy,
+          category_id: paymentData.categoryId,
+          subcategory_id: paymentData.subcategoryId
         };
 
         const { data: payment, error: paymentError } = await supabase
@@ -832,7 +688,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               // Upload file to storage
               const fileExt = attachment.file.name.split('.').pop();
               const fileName = `${payment.id}/${Date.now()}.${fileExt}`;
-              
+
               const { error: uploadError } = await supabase.storage
                 .from('attachments')
                 .upload(fileName, attachment.file);
@@ -878,14 +734,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
         // Fetch the complete payment with all relations
         const completePayment = await transformSinglePayment(payment);
-        
+
         // Update local state
         set(state => ({
           payments: [completePayment, ...state.payments],
           filteredPayments: [completePayment, ...state.filteredPayments],
           isLoading: false
         }));
-        
+
         return completePayment;
       } catch (error) {
         console.error('Error adding payment:', error);
@@ -900,8 +756,13 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     return result;
   },
-  
-  approvePayment: async (id: string, approver: User, paymentAmount?: number) => {
+
+  approvePayment: async (
+    id: string,
+    approver: User,
+    paymentAmount?: number,
+    reason?: string
+  ) => {
     set({ isLoading: true });
 
     const result = await withNetworkCheck(async () => {
@@ -913,19 +774,24 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           .eq('id', id)
           .single();
 
-        if (fetchError) throw fetchError;
+        if (fetchError) {
+          handleSupabaseError(fetchError);
+          return false;
+        }
 
         const updateData: any = {
           status: 'approved',
           approved_by: approver.id,
-          // approved_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
 
-        // If payment amount is provided and different from current, store starting amount
+        // If payment amount is provided and different from current, store starting amount and reason
         if (paymentAmount !== undefined && paymentAmount !== currentPayment.payment_amount) {
           updateData.starting_amount = currentPayment.payment_amount;
           updateData.payment_amount = paymentAmount;
+          if (reason) {
+            updateData.amount_change_reason = reason;
+          }
         }
 
         const { data, error } = await supabase
@@ -963,16 +829,17 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     return result || false;
   },
-  
+
   rejectPayment: async (id: string, approver: User) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
         const { data, error } = await supabase
           .from('payments')
-          .update({ 
+          .update({
             status: 'rejected',
+            accounts_verification_status:'pending',
             approved_by: approver.id
           })
           .eq('id', id)
@@ -985,14 +852,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
 
         const transformedPayment = await transformSinglePayment(data);
-        
+
         set(state => ({
-          payments: state.payments.map(payment => 
+          payments: state.payments.map(payment =>
             payment.id === id ? transformedPayment : payment
           ),
           isLoading: false
         }));
-        
+
         get().applyFilters();
         return true;
       } catch (error) {
@@ -1005,15 +872,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       set({ isLoading: false });
     }
   },
-  
+
   bulkApprovePayments: async (ids: string[], approver: User) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
         const { data, error } = await supabase
           .from('payments')
-          .update({ 
+          .update({
             status: 'approved',
             approved_by: approver.id
           })
@@ -1026,7 +893,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
 
         const transformedPayments = await Promise.all(data.map((payment: any) => transformSinglePayment(payment)));
-        
+
         set(state => ({
           payments: state.payments.map(p => {
             const transformedPayment = transformedPayments.find(tp => tp.id === p.id);
@@ -1034,7 +901,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           }),
           isLoading: false
         }));
-        
+
         get().applyFilters();
         return { success: ids, failed: [] };
       } catch (error) {
@@ -1050,16 +917,17 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     return result;
   },
-  
+
   bulkRejectPayments: async (ids: string[], approver: User) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
         const { data, error } = await supabase
           .from('payments')
-          .update({ 
+          .update({
             status: 'rejected',
+            accounts_verification_status:'pending',
             approved_by: approver.id
           })
           .in('id', ids)
@@ -1071,7 +939,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
 
         const transformedPayments = await Promise.all(data.map((payment: any) => transformSinglePayment(payment)));
-        
+
         set(state => ({
           payments: state.payments.map(p => {
             const transformedPayment = transformedPayments.find(tp => tp.id === p.id);
@@ -1079,7 +947,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           }),
           isLoading: false
         }));
-        
+
         get().applyFilters();
         return { success: ids, failed: [] };
       } catch (error) {
@@ -1095,20 +963,41 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     return result;
   },
-  
-  markAsProcessed: async (id: string, invoiceReceived?: 'yes' | 'no') => {
+
+  markAsProcessed: async (id: string, invoiceReceived?: 'yes' | 'no', paymentAmount?: number, reason?: string) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
-        const updateData: any = { 
+        // First get the current payment to check if payment amount is changing
+        const { data: currentPayment, error: fetchError } = await supabase
+          .from('payments')
+          .select('payment_amount')
+          .eq('id', id)
+          .single();
+
+        if (fetchError) {
+          handleSupabaseError(fetchError);
+          return false;
+        }
+
+        const updateData: any = {
           status: 'processed',
           updated_at: new Date().toISOString()
         };
-        
+
         // Add optional fields if provided
         if (invoiceReceived !== undefined) {
           updateData.invoice_received = invoiceReceived;
+        }
+
+        // If payment amount is provided and different from current, store starting amount and reason
+        if (paymentAmount !== undefined && paymentAmount !== currentPayment.payment_amount) {
+          updateData.starting_amount = currentPayment.payment_amount;
+          updateData.payment_amount = paymentAmount;
+          if (reason) {
+            updateData.amount_change_reason = reason;
+          }
         }
 
         const { data, error } = await supabase
@@ -1124,14 +1013,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
 
         const transformedPayment = await transformSinglePayment(data);
-        
+
         set(state => ({
-          payments: state.payments.map(payment => 
+          payments: state.payments.map(payment =>
             payment.id === id ? transformedPayment : payment
           ),
           isLoading: false
         }));
-        
+
         get().applyFilters();
         return true;
       } catch (error) {
@@ -1143,18 +1032,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     if (!result) {
       set({ isLoading: false });
     }
-    
+
     return result || false;
   },
-  
+
   markInvoiceReceived: async (id: string) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
         const { data, error } = await supabase
           .from('payments')
-          .update({ 
+          .update({
             invoice_received: 'yes'
           })
           .eq('id', id)
@@ -1167,14 +1056,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         }
 
         const transformedPayment = await transformSinglePayment(data);
-        
+
         set(state => ({
-          payments: state.payments.map(payment => 
+          payments: state.payments.map(payment =>
             payment.id === id ? transformedPayment : payment
           ),
           isLoading: false
         }));
-        
+
         get().applyFilters();
         return true;
       } catch (error) {
@@ -1190,17 +1079,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     return result;
   },
-  
+
   raiseQuery: async (id: string, approver: User, query: string) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
         const { error } = await supabase
           .from('payments')
-          .update({ 
+          .update({
             status: 'query_raised' as const,
             query_details: query,
+            accounts_verification_status: 'pending',
             updated_at: new Date().toISOString()
           })
           .eq('id', id);
@@ -1209,13 +1099,13 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
         // Update local state
         set(state => ({
-          payments: state.payments.map(payment => 
-            payment.id === id 
+          payments: state.payments.map(payment =>
+            payment.id === id
               ? { ...payment, status: 'query_raised' as const, queryDetails: query }
               : payment
           ),
-          filteredPayments: state.filteredPayments.map(payment => 
-            payment.id === id 
+          filteredPayments: state.filteredPayments.map(payment =>
+            payment.id === id
               ? { ...payment, status: 'query_raised' as const, queryDetails: query }
               : payment
           )
@@ -1235,10 +1125,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     return result;
   },
-  
+
   raiseAccountsQuery: async (id: string, accountsUser: User, query: string) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
         // First, check if the payment exists and get current data
@@ -1271,7 +1161,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         // NOTE: Accounts queries do NOT change the payment status - it remains "approved"
         const { error } = await supabase
           .from('payments')
-          .update({ 
+          .update({
             accounts_query: query,
             updated_at: new Date().toISOString()
             // Explicitly NOT updating status - it should remain "approved"
@@ -1294,13 +1184,13 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
         // Update local state
         set(state => ({
-          payments: state.payments.map(payment => 
-            payment.id === id 
+          payments: state.payments.map(payment =>
+            payment.id === id
               ? { ...payment, accountsQuery: query }
               : payment
           ),
-          filteredPayments: state.filteredPayments.map(payment => 
-            payment.id === id 
+          filteredPayments: state.filteredPayments.map(payment =>
+            payment.id === id
               ? { ...payment, accountsQuery: query }
               : payment
           )
@@ -1322,10 +1212,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     return result;
   },
-  
+
   updatePayment: async (id: string, paymentData: Partial<PaymentRequest>) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
         // First get the existing payment to ensure it exists
@@ -1356,6 +1246,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             lpr: paymentData.lpr,
             ioa: paymentData.ioa,
             cpp: paymentData.cpp,
+            quantity_checked_by: paymentData.quantityCheckedBy,
+            quality_checked_by: paymentData.qualityCheckedBy,
+            purchase_owner: paymentData.purchaseOwner,
+            price_check_guaranteed_by: paymentData.priceCheckGuaranteedBy,
+            category_id: paymentData.categoryId,
+            subcategory_id: paymentData.subcategoryId,
             updated_at: new Date().toISOString()
           })
           .eq('id', id);
@@ -1462,10 +1358,10 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         if (fetchUpdatedError) throw fetchUpdatedError;
 
         const transformedPayment = await transformSinglePayment(updatedPayment);
-        
+
         // Update local state
         set(state => ({
-          payments: state.payments.map(p => 
+          payments: state.payments.map(p =>
             p.id === id ? transformedPayment : p
           ),
           filteredPayments: state.filteredPayments.map(p =>
@@ -1487,7 +1383,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
     return result;
   },
-  
+
   setFilterOptions: (options) => {
     set(state => ({
       filterOptions: {
@@ -1495,21 +1391,37 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         ...options
       }
     }));
-    
+
     get().applyFilters();
   },
-  
+
+  resetFilterOptions: (options?: Partial<FilterOptions>) => {
+    set(state => ({
+      filterOptions: {
+        status: [],
+        dateRange: { start: null, end: null },
+        vendor: null,
+        company: null,
+        companyList: null,
+        overdueInvoices: false,
+        hasAccountsQuery: false,
+        accountsVerificationStatus: [],
+        ...options
+      }
+    }));
+  },
+
   setSearchTerm: (searchTerm: string) => {
     set(state => ({
       searchTerm: searchTerm
     }));
   },
-  
+
   applyFilters: () => {
     // Instead of client-side filtering, trigger a server-side fetch with current filters
     get().fetchPayments(1, get().pagination.pageSize, true, get().filterOptions, get().sortOptions, get().searchTerm);
   },
-  
+
   exportToExcel: () => {
     // Implementation remains the same
     alert('Export to Excel functionality would be implemented here');
@@ -1528,7 +1440,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         hasAccountsQuery: false,
       }
     }));
-    
+
     // Trigger server-side fetch with the overdue filter
     get().fetchPayments(1, get().pagination.pageSize, true, get().filterOptions, get().sortOptions, get().searchTerm);
   },
@@ -1546,19 +1458,23 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         hasAccountsQuery: true,
       }
     }));
-    
+
     // Trigger server-side fetch with the accounts query filter
     get().fetchPayments(1, get().pagination.pageSize, true, get().filterOptions, get().sortOptions, get().searchTerm);
   },
 
   fetchPaymentById: async (id: string) => {
     set({ isLoading: true });
-    
+
     const result = await withNetworkCheck(async () => {
       try {
+        // Fetch payment with attachments
         const { data, error } = await supabase
           .from('payments')
-          .select('*')
+          .select(`
+            *,
+            attachments:attachments(*)
+          `)
           .eq('id', id)
           .single();
 
@@ -1566,7 +1482,19 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         if (!data) return null;
 
         const payment = await transformSinglePayment(data);
-        
+
+        // Add attachments to the payment object
+        payment.attachments = data.attachments.map((attachment: any) => ({
+          id: attachment.id,
+          description: attachment.description,
+          fileUrl: attachment.file_url,
+          fileName: attachment.file_name,
+          fileType: attachment.file_type,
+          fileSize: attachment.file_size,
+          createdAt: attachment.created_at,
+          updatedAt: attachment.updated_at
+        }));
+
         set({ isLoading: false });
         return payment;
       } catch (error) {
@@ -1641,7 +1569,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
 
           // Batch fetch all users
           const uncachedUserIds = Array.from(userIds).filter(id => !usersCache.has(id));
-          
+
           if (uncachedUserIds.length > 0) {
             const { data: users, error: usersError } = await supabase
               .from('users')
@@ -1691,6 +1619,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               serialNumber: row.serial_number,
               date: row.date,
               vendorName: row.vendor_name,
+              vendorId: row.vendor_id,
               totalOutstanding: row.total_outstanding,
               advanceDetails: row.advance_details as 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others',
               paymentAmount: row.payment_amount,
@@ -1707,11 +1636,18 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               status: row.status,
               queryDetails: row.query_details || undefined,
               accountsQuery: row.accounts_query || undefined,
+              accountsVerificationStatus: row.accounts_verification_status || 'pending',
               lpr: row.lpr || undefined,
               ioa: row.ioa || undefined,
               cpp: row.cpp || undefined,
               invoiceReceived: row.invoice_received || undefined,
               startingAmount: row.starting_amount || undefined,
+              quantityCheckedBy: row.quantity_checked_by || undefined,
+              qualityCheckedBy: row.quality_checked_by || undefined,
+              purchaseOwner: row.purchase_owner || undefined,
+              priceCheckGuaranteedBy: row.price_check_guaranteed_by || undefined,
+              categoryId: row.category_id || undefined,
+              subcategoryId: row.subcategory_id || undefined,
               createdAt: row.created_at,
               updatedAt: row.updated_at
             };
@@ -1781,12 +1717,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             totalFundAvailable: 0,
             totalPaymentToInitiate: 0,
             netFundAvailable: 0,
-            dayId: ''
+            dayId: '',
+            pendingAccountsVerifications: 0
           }),
           totalFundAvailable,
           totalPaymentToInitiate: state.dashboardStats?.totalPaymentToInitiate || 0,
           netFundAvailable: totalFundAvailable - (state.dashboardStats?.totalPaymentToInitiate || 0),
-          dayId: currentDayId
+          dayId: currentDayId,
+          pendingAccountsVerifications: state.dashboardStats?.pendingAccountsVerifications || 0
         }
       }));
     } catch (error) {
@@ -1861,12 +1799,14 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             totalFundAvailable: 0,
             totalPaymentToInitiate: 0,
             netFundAvailable: 0,
-            dayId: ''
+            dayId: '',
+            pendingAccountsVerifications: 0
           }),
           totalFundAvailable,
           totalPaymentToInitiate,
           netFundAvailable: totalFundAvailable - totalPaymentToInitiate,
-          dayId: currentDayId
+          dayId: currentDayId,
+          pendingAccountsVerifications: state.dashboardStats?.pendingAccountsVerifications || 0
         }
       }));
     } catch (error) {
@@ -1874,5 +1814,217 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       // Don't throw the error, just log it and preserve existing stats
       return;
     }
+  },
+
+  accountsVerifyPayment: async (id: string) => {
+    set({ isLoading: true });
+
+    const result = await withNetworkCheck(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('payments')
+          .update({
+            accounts_verification_status: 'verified',
+          })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) {
+          handleSupabaseError(error);
+          return false;
+        }
+
+        const transformedPayment = await transformSinglePayment(data);
+
+        set(state => ({
+          payments: state.payments.map(payment =>
+            payment.id === id ? transformedPayment : payment
+          ),
+          filteredPayments: state.filteredPayments.map(payment =>
+            payment.id === id ? transformedPayment : payment
+          ),
+          isLoading: false
+        }));
+
+        showSuccessToast('Payment verified successfully');
+        return true;
+      } catch (error) {
+        console.error('Error verifying payment:', error);
+        showErrorToast('Failed to verify payment');
+        return false;
+      }
+    }, 'Failed to verify payment. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+      return false;
+    }
+
+    return result;
+  },
+
+  bulkProcessPayments: async (ids: string[]) => {
+    set({ isLoading: true });
+
+    const result = await withNetworkCheck(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('payments')
+          .update({
+            status: 'processed',
+            invoice_received: 'no',
+            updated_at: new Date().toISOString()
+          })
+          .in('id', ids)
+          .select();
+
+        if (error) {
+          handleSupabaseError(error);
+          return { success: [], failed: ids };
+        }
+
+        const transformedPayments = await Promise.all(data.map((payment: any) => transformSinglePayment(payment)));
+
+        set(state => ({
+          payments: state.payments.map(p => {
+            const transformedPayment = transformedPayments.find(tp => tp.id === p.id);
+            return transformedPayment || p;
+          }),
+          isLoading: false
+        }));
+
+        get().applyFilters();
+        return { success: ids, failed: [] };
+      } catch (error) {
+        console.error('Error bulk processing payments:', error);
+        return { success: [], failed: ids };
+      }
+    }, 'Failed to bulk process payments. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+      return { success: [], failed: ids };
+    }
+
+    return result;
+  },
+
+  bulkMarkInvoiceReceived: async (ids: string[]) => {
+    console.log('[bulkMarkInvoiceReceived] Starting with IDs:', ids);
+    set({ isLoading: true });
+  
+    const result = await withNetworkCheck(
+      async () => {
+        try {
+          const { data, error } = await supabase
+            .from('payments')
+            .update({
+              invoice_received: 'yes',
+              updated_at: new Date().toISOString()
+            })
+            .in('id', ids)
+            .select();
+  
+          if (error) {
+            console.error('[bulkMarkInvoiceReceived] Supabase error:', error.message, error.details);
+            handleSupabaseError(error);
+            return { success: [], failed: ids };
+          }
+  
+          console.log('[bulkMarkInvoiceReceived] Successfully updated payments:', data.length);
+  
+          const transformedPayments = await Promise.all(
+            data.map((payment: any) => transformSinglePayment(payment))
+          );
+  
+          set((state) => ({
+            payments: state.payments.map((p) => {
+              const updated = transformedPayments.find((tp) => tp.id === p.id);
+              return updated || p;
+            }),
+            isLoading: false,
+          }));
+  
+          console.log('[bulkMarkInvoiceReceived] State updated and filters reapplied');
+          get().applyFilters();
+  
+          return { success: ids, failed: [] };
+        } catch (error) {
+          console.error('[bulkMarkInvoiceReceived] Unexpected error:', error);
+          set({ isLoading: false });
+          return { success: [], failed: ids };
+        }
+      },
+      'Failed to mark invoices received. Please check your internet connection.'
+    );
+  
+    if (!result) {
+      console.warn('[bulkMarkInvoiceReceived] Network check failed');
+      set({ isLoading: false });
+      return { success: [], failed: ids };
+    }
+  
+    console.log('[bulkMarkInvoiceReceived] Done:', result);
+    return result;
+  },
+
+  bulkAccountsVerifyPayments: async (ids: string[]) => {
+    set({ isLoading: true });
+
+    const result = await withNetworkCheck(
+      async () => {
+        try {
+          const { data, error } = await supabase
+            .from('payments')
+            .update({
+              accounts_verification_status: 'verified',
+            })
+            .in('id', ids)
+            .select();
+
+          if (error) {
+            console.error('[bulkAccountsVerifyPayments] Supabase error:', error.message, error.details);
+            handleSupabaseError(error);
+            return { success: [], failed: ids };
+          }
+
+          console.log('[bulkAccountsVerifyPayments] Successfully updated payments:', data.length);
+
+          const transformedPayments = await Promise.all(
+            data.map((payment: any) => transformSinglePayment(payment))
+          );
+
+          set((state) => ({
+            payments: state.payments.map((p) => {
+              const updated = transformedPayments.find((tp) => tp.id === p.id);
+              return updated || p;
+            }),
+            isLoading: false,
+          }));
+
+          console.log('[bulkAccountsVerifyPayments] State updated and filters reapplied');
+          get().applyFilters();
+
+          return { success: ids, failed: [] };
+        } catch (error) {
+          console.error('[bulkAccountsVerifyPayments] Unexpected error:', error);
+          set({ isLoading: false });
+          return { success: [], failed: ids };
+        }
+      },
+      'Failed to accounts verify payments. Please check your internet connection.'
+    );
+
+    if (!result) {
+      console.warn('[bulkAccountsVerifyPayments] Network check failed');
+      set({ isLoading: false });
+      return { success: [], failed: ids };
+    }
+
+    console.log('[bulkAccountsVerifyPayments] Done:', result);
+    return result;
   }
+
+  
 }));

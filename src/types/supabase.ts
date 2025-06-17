@@ -37,10 +37,12 @@ export interface Database {
       }
       vendors: {
         Row: {
-          id: string
+          id: string  
           name: string
           account_number: string
           ifsc_code: string
+          added_by: string
+          status: 'approved' | 'pending'
           created_at: string
           updated_at: string
         }
@@ -49,6 +51,8 @@ export interface Database {
           name: string
           account_number: string
           ifsc_code: string
+          added_by: string
+          status?: 'approved' | 'pending'
           created_at?: string
           updated_at?: string
         }
@@ -57,6 +61,8 @@ export interface Database {
           name?: string
           account_number?: string
           ifsc_code?: string
+          added_by?: string
+          status?: 'approved' | 'pending'
           created_at?: string
           updated_at?: string
         }
@@ -67,6 +73,7 @@ export interface Database {
           serial_number: number
           date: string
           vendor_name: string
+          vendor_id: string | null
           total_outstanding: number
           advance_details: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others'
           payment_amount: number
@@ -81,19 +88,28 @@ export interface Database {
           status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details: string | null
           accounts_query: string | null
+          accounts_verification_status: 'pending' | 'verified' | 'rejected'
           lpr: string | null
           ioa: string | null
           cpp: string | null
           invoice_received: 'yes' | 'no' | null
           starting_amount: number | null
+          quantity_checked_by: string | null
+          quality_checked_by: string | null
+          purchase_owner: string | null
+          price_check_guaranteed_by: string | null
+          category_id: string | null
+          subcategory_id: string | null
           created_at: string
           updated_at: string
+          amount_change_reason: string | null
         }
         Insert: {
           id?: string
           serial_number?: number
           date: string
           vendor_name: string
+          vendor_id?: string | null
           total_outstanding: number
           advance_details: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others'
           payment_amount: number
@@ -108,19 +124,28 @@ export interface Database {
           status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details?: string | null
           accounts_query?: string | null
+          accounts_verification_status?: 'pending' | 'verified' | 'rejected'
           lpr?: string | null
           ioa?: string | null
           cpp?: string | null
           invoice_received?: 'yes' | 'no' | null
           starting_amount?: number | null
+          quantity_checked_by?: string | null
+          quality_checked_by?: string | null
+          purchase_owner?: string | null
+          price_check_guaranteed_by?: string | null
+          category_id?: string | null
+          subcategory_id?: string | null
           created_at?: string
           updated_at?: string
+          amount_change_reason?: string | null
         }
         Update: {
           id?: string
           serial_number?: number
           date?: string
           vendor_name?: string
+          vendor_id?: string | null
           total_outstanding?: number
           advance_details?: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others'
           payment_amount?: number
@@ -135,13 +160,21 @@ export interface Database {
           status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
           query_details?: string | null
           accounts_query?: string | null
+          accounts_verification_status?: 'pending' | 'verified' | 'rejected'
           lpr?: string | null
           ioa?: string | null
           cpp?: string | null
           invoice_received?: 'yes' | 'no' | null
           starting_amount?: number | null
+          quantity_checked_by?: string | null
+          quality_checked_by?: string | null
+          purchase_owner?: string | null
+          price_check_guaranteed_by?: string | null
+          category_id?: string | null
+          subcategory_id?: string | null
           created_at?: string
           updated_at?: string
+          amount_change_reason?: string | null
         }
       }
       bills: {

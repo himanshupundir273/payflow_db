@@ -2,7 +2,7 @@ import React from 'react';
 import Badge from '../ui/Badge';
 
 interface PaymentStatusBadgeProps {
-  status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised';
+  status: 'accounts_approved' | 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised';
 }
 
 const PaymentStatusBadge: React.FC<PaymentStatusBadgeProps> = ({ status }) => {
@@ -17,8 +17,10 @@ const PaymentStatusBadge: React.FC<PaymentStatusBadgeProps> = ({ status }) => {
       return <Badge variant="primary">Processed</Badge>;
     case 'query_raised':
       return <Badge variant="warning">Query Raised</Badge>;
+    case 'accounts_approved':
+      return <Badge variant="success">Accounts Approved</Badge>;
     default:
-      return <Badge variant="outline">Unknown</Badge>;
+      return <Badge variant="warning">Unknown</Badge>;
   }
 };
 

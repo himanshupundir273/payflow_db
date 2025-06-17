@@ -7,7 +7,7 @@ import { CheckCircle2 } from 'lucide-react';
 interface ApprovePaymentDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (paymentAmount: number) => void;
+  onSubmit: (paymentAmount: number, reason: string) => void;
   currentPaymentAmount: number;
 }
 
@@ -18,22 +18,30 @@ const ApprovePaymentDialog: React.FC<ApprovePaymentDialogProps> = ({
   currentPaymentAmount,
 }) => {
   const [paymentAmount, setPaymentAmount] = useState(currentPaymentAmount.toString());
+  const [reason, setReason] = useState('');
 
   useEffect(() => {
     setPaymentAmount(currentPaymentAmount.toString());
+    setReason('');
   }, [currentPaymentAmount]);
 
   const handleSubmit = () => {
     const amount = parseFloat(paymentAmount);
     if (!isNaN(amount) && amount >= 0) {
-      onSubmit(amount);
+      onSubmit(amount, reason);
     }
   };
 
   const handleClose = () => {
     setPaymentAmount(currentPaymentAmount.toString());
+    setReason('');
     onClose();
   };
+
+  const isAmountChanged = parseFloat(paymentAmount) !== currentPaymentAmount;
+  const isSubmitDisabled = !paymentAmount || 
+    parseFloat(paymentAmount) < 0 || 
+    (isAmountChanged && !reason.trim());
 
   return (
     <Dialog isOpen={isOpen} onClose={handleClose} title="Approve Payment">
@@ -54,23 +62,44 @@ const ApprovePaymentDialog: React.FC<ApprovePaymentDialogProps> = ({
           </div>
         </div>
 
-        <div className="space-y-2">
-          <label
-            htmlFor="paymentAmount"
-            className="block text-sm font-medium text-gray-700"
-          >
-            Payment Amount
-          </label>
-          <Input
-            id="paymentAmount"
-            type="number"
-            min="0"
-            step="0.01"
-            value={paymentAmount}
-            onChange={(e) => setPaymentAmount(e.target.value)}
-            placeholder="Enter payment amount"
-            fullWidth
-          />
+        <div className="space-y-4">
+          <div>
+            <label
+              htmlFor="paymentAmount"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Payment Amount
+            </label>
+            <Input
+              id="paymentAmount"
+              type="number"
+              min="0"
+              step="0.01"
+              value={paymentAmount}
+              onChange={(e) => setPaymentAmount(e.target.value)}
+              placeholder="Enter payment amount"
+              fullWidth
+            />
+          </div>
+
+          {isAmountChanged && (
+            <div>
+              <label
+                htmlFor="reason"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Reason for Amount Change
+              </label>
+              <Input
+                id="reason"
+                type="text"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Enter reason for amount change"
+                fullWidth
+              />
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
@@ -84,7 +113,7 @@ const ApprovePaymentDialog: React.FC<ApprovePaymentDialogProps> = ({
           <Button
             variant="success"
             onClick={handleSubmit}
-            disabled={!paymentAmount || parseFloat(paymentAmount) < 0}
+            disabled={isSubmitDisabled}
             className="w-full sm:w-auto px-4 py-2.5 text-sm font-medium"
           >
             Approve Payment
