@@ -10,7 +10,6 @@ import {
   PlusCircle,
   FileCheck,
   FileClock,
-  FileX,
   Wallet,
   ArrowRight,
   AlertCircle,
@@ -32,9 +31,9 @@ const DashboardPage: React.FC = () => {
     pagination,
     filterOptions,
     sortOptions,
-    searchTerm,
     filterOverdueAdvanceInvoices,
     filterAccountsQueries,
+    resetFilterOptions,
   } = usePaymentStore();
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -42,50 +41,38 @@ const DashboardPage: React.FC = () => {
     []
   );
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
   const touchStartY = useRef(0);
   const touchEndY = useRef(0);
   const [pullDistance, setPullDistance] = useState(0);
 
-  // Fetch dashboard stats on component mount and when user changes
-  React.useEffect(() => {
-    if (user) {
-      // Stats are now calculated during fetchPayments, so no separate call needed
-      // fetchDashboardStats() is no longer necessary
-    }
-  }, [user]);
-
-  // Fetch dashboard payments (unfiltered) when component loads
+  // Fetch dashboard stats and reset filters on component mount
   React.useEffect(() => {
     const loadDashboardData = async () => {
-      if (user && !isRefreshing) {
+      if (user) {
         try {
+          setStatsLoading(true);
           setDashboardLoading(true);
+          resetFilterOptions();
+          await fetchDashboardStats();
           const unfilteredPayments = await fetchDashboardPayments();
           setDashboardPayments(unfilteredPayments);
         } catch (error) {
-          console.error('Error fetching dashboard payments:', error);
+          console.error('Error loading dashboard data:', error);
         } finally {
+          setStatsLoading(false);
           setDashboardLoading(false);
         }
       }
     };
 
     loadDashboardData();
-  }, [user, isRefreshing, fetchDashboardPayments]);
 
-  // Fetch payments when dashboard loads if not already loaded
-  React.useEffect(() => {
-    if (user && payments.length === 0 && !isRefreshing) {
-      fetchPayments(1, 10, true, filterOptions, sortOptions);
-    }
-  }, [
-    user,
-    payments.length,
-    isRefreshing,
-    fetchPayments,
-    filterOptions,
-    sortOptions,
-  ]);
+    // Cleanup function to reset filters when component unmounts
+    return () => {
+      resetFilterOptions();
+    };
+  }, [user]);
 
   // Use stats from store or provide defaults
   const stats = dashboardStats || {
@@ -99,6 +86,7 @@ const DashboardPage: React.FC = () => {
     overdueAdvanceInvoices: 0,
     totalAmount: 0,
     pendingAmount: 0,
+    pendingAccountsVerifications: 0
   };
 
   const recentPayments = useMemo(() => {
@@ -126,18 +114,14 @@ const DashboardPage: React.FC = () => {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     setDashboardLoading(true);
+    setStatsLoading(true);
     try {
       if (!(await checkNetworkConnection())) {
         return;
       }
-      // Refresh both main payments and dashboard payments
-      await fetchPayments(
-        1,
-        pagination.pageSize,
-        true,
-        filterOptions,
-        sortOptions
-      );
+      // Reset filters and fetch fresh data
+      resetFilterOptions();
+      await fetchDashboardStats();
       const unfilteredPayments = await fetchDashboardPayments();
       setDashboardPayments(unfilteredPayments);
     } catch (error) {
@@ -145,6 +129,7 @@ const DashboardPage: React.FC = () => {
     } finally {
       setIsRefreshing(false);
       setDashboardLoading(false);
+      setStatsLoading(false);
       setPullDistance(0);
     }
   };
@@ -170,94 +155,61 @@ const DashboardPage: React.FC = () => {
     }
   };
 
-  const handleCardClick = (status: string) => {
-    // First clear all existing filters
-    setFilterOptions({
-      status: [],
-      dateRange: { start: null, end: null },
-      vendor: null,
-      company: null,
-      companyList: null,
-      overdueInvoices: false,
-      hasAccountsQuery: false,
-    });
-
-    if (user?.role === 'user') {
-      let statusFilters: string[] = [];
-
-      switch (status) {
-        case 'all':
-          statusFilters = [
-            'pending',
-            'approved',
-            'rejected',
-            'processed',
-            'query_raised',
-          ];
-          break;
-        case 'pending':
-          statusFilters = ['pending'];
-          break;
-        case 'approved':
-          statusFilters = ['approved'];
-          break;
-        case 'activity':
-          statusFilters = ['processed', 'rejected'];
-          break;
-        case 'query_raised':
-          statusFilters = ['query_raised'];
-          break;
-      }
-
-      setFilterOptions({
-        status: statusFilters,
-        overdueInvoices: false,
-        hasAccountsQuery: false,
-      });
-      navigate('/payments');
-    } else if (user?.role === 'admin' || user?.role === 'accounts') {
-      if (status === 'pending') {
-        // For both admin and accounts users, redirect to approvals page
-        navigate('/approvals');
-      } else if (status === 'approved' && user?.role === 'accounts') {
-        // For accounts users, "Pending Approval" card shows pending payments on payments page
-        setFilterOptions({
-          status: ['pending'],
-          overdueInvoices: false,
-          hasAccountsQuery: false,
-        });
-        navigate('/payments');
-      } else {
-        let statusFilters: string[] = [];
-
-        switch (status) {
-          case 'all':
-            statusFilters = [
-              'pending',
-              'approved',
-              'rejected',
-              'processed',
-              'query_raised',
-            ];
+  const handleCardClick = (cardNumber: number) => {
+    switch (user?.role) {
+      case 'user':
+        switch (cardNumber) {
+          case 0: // query raised
+            navigate('/dashboard/queries');
             break;
-          case 'approved':
-            statusFilters = ['approved'];
+          case 1: // Total Requests
+            navigate('/dashboard/total-requests');
             break;
-          case 'activity':
-            statusFilters = ['processed', 'rejected'];
+          case 2: // Pending Approval
+            navigate('/dashboard/pending-approval');
             break;
-          case 'query_raised':
-            statusFilters = ['query_raised'];
+          case 3: // Approved
+            navigate('/dashboard/approved');
+            break;
+          case 4: // Total Activity
+            navigate('/dashboard/total-activity');
             break;
         }
+        break;
 
-        setFilterOptions({
-          status: statusFilters,
-          overdueInvoices: false,
-          hasAccountsQuery: false,
-        });
-        navigate('/payments');
-      }
+      case 'admin':
+        switch (cardNumber) {
+          case 1: // Total Requests
+            navigate('/dashboard/total-requests');
+            break;
+          case 2: // Pending Approval
+            navigate('/dashboard/pending-approval');
+            break;
+          case 3: // Approved
+            navigate('/dashboard/approved');
+            break;
+          case 4: // Total Activity
+            navigate('/dashboard/total-activity');
+            break;
+        }
+        break;
+
+      case 'accounts':
+        switch (cardNumber) {
+          case 1: // Total Requests
+            navigate('/dashboard/total-requests');
+            break;
+          case 2: // Pending Processing
+            navigate('/dashboard/pending-processing');
+            break;
+          case 3: // Pending Approval
+            navigate('/dashboard/verifications');
+            break;
+          case 4: // Total Activity
+            navigate('/dashboard/total-activity');
+            break;
+        }
+        break;
     }
   };
 
@@ -300,7 +252,7 @@ const DashboardPage: React.FC = () => {
       {user?.role === 'user' && stats.queryRaised > 0 && (
         <div
           className="mb-4 inline-flex items-center px-3 py-2 rounded-lg bg-warning-100 text-warning-800 cursor-pointer hover:bg-warning-200 transition-colors"
-          onClick={() => handleCardClick('query_raised')}
+          onClick={() => handleCardClick(0)}
         >
           <AlertCircle className="h-4 w-4 mr-2" />
           <span className="font-medium">
@@ -318,8 +270,8 @@ const DashboardPage: React.FC = () => {
             className="mb-4 inline-flex items-center px-3 py-2 rounded-lg bg-warning-100 text-warning-800 cursor-pointer hover:bg-warning-200 transition-colors lg:ml-2"
             onClick={() => {
               // Filter for approved payments with accounts queries
-              filterAccountsQueries();
-              navigate('/payments');
+              filterAccountsQueries()
+              navigate('/dashboard/queries?type=accounts')
             }}
           >
             <AlertCircle className="h-4 w-4 mr-2" />
@@ -341,7 +293,7 @@ const DashboardPage: React.FC = () => {
           onClick={() => {
             // Filter for overdue advance invoices
             filterOverdueAdvanceInvoices();
-            navigate('/payments');
+            navigate('/dashboard/queries?type=overdue');
           }}
         >
           <span className="font-medium">
@@ -356,12 +308,11 @@ const DashboardPage: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <Card
-          className={`animate-fade-in ${
-            user?.role === 'user' || user?.role === 'admin'
+          className={`animate-fade-in ${user?.role === 'user' || user?.role === 'admin'
               ? 'cursor-pointer hover:shadow-md transition-shadow'
               : ''
-          }`}
-          onClick={() => handleCardClick('all')}
+            }`}
+          onClick={() => handleCardClick(1)}
         >
           <div className="flex items-start justify-between">
             <div>
@@ -369,7 +320,11 @@ const DashboardPage: React.FC = () => {
                 Total Requests
               </p>
               <p className="mt-1 text-3xl font-semibold text-gray-900">
-                {stats.total}
+                {statsLoading ? (
+                  <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  stats.total
+                )}
               </p>
             </div>
             <div className="p-3 bg-primary-100 rounded-full">
@@ -378,20 +333,23 @@ const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-4">
             <div className="text-sm text-gray-500">
-              {user?.role === 'user'
-                ? 'Your payment requests'
-                : 'All payment requests'}
+              {statsLoading ? (
+                <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+              ) : (
+                user?.role === 'user'
+                  ? 'Your payment requests'
+                  : 'All payment requests'
+              )}
             </div>
           </div>
         </Card>
 
         <Card
-          className={`animate-fade-in delay-100 ${
-            user?.role === 'user' || user?.role === 'admin'
+          className={`animate-fade-in delay-100 ${user?.role === 'user' || user?.role === 'admin'
               ? 'cursor-pointer hover:shadow-md transition-shadow'
               : ''
-          }`}
-          onClick={() => handleCardClick('pending')}
+            }`}
+          onClick={() => handleCardClick(2)}
         >
           <div className="flex items-start justify-between">
             <div>
@@ -401,7 +359,11 @@ const DashboardPage: React.FC = () => {
                   : 'Pending Approval'}
               </p>
               <p className="mt-1 text-3xl font-semibold text-gray-900">
-                {user?.role === 'accounts' ? stats.approved : stats.pending}
+                {statsLoading ? (
+                  <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  user?.role === 'accounts' ? stats.approved : stats.pending
+                )}
               </p>
             </div>
             <div className="p-3 bg-warning-100 rounded-full">
@@ -410,36 +372,43 @@ const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-4">
             <div className="text-sm text-gray-500">
-              {user?.role === 'accounts' 
-                ? `Total: ${(stats.totalAmount - stats.pendingAmount).toLocaleString('en-IN', {
+              {statsLoading ? (
+                <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+              ) : (
+                user?.role === 'accounts'
+                  ? `Total: ${(stats.totalAmount - stats.pendingAmount).toLocaleString('en-IN', {
                     style: 'currency',
                     currency: 'INR',
                     maximumFractionDigits: 0,
                   })}`
-                : `Total: ${stats.pendingAmount.toLocaleString('en-IN', {
+                  : `Total: ${stats.pendingAmount.toLocaleString('en-IN', {
                     style: 'currency',
                     currency: 'INR',
                     maximumFractionDigits: 0,
-                  })}`}
+                  })}`
+              )}
             </div>
           </div>
         </Card>
 
         <Card
-          className={`animate-fade-in delay-200 ${
-            user?.role === 'user' || user?.role === 'admin'
+          className={`animate-fade-in delay-200 ${user?.role === 'user' || user?.role === 'admin'
               ? 'cursor-pointer hover:shadow-md transition-shadow'
               : ''
-          }`}
-          onClick={() => handleCardClick('approved')}
+            }`}
+          onClick={() => handleCardClick(3)}
         >
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm font-medium text-gray-500">
-                {user?.role === 'accounts' ? 'Pending Approval' : 'Approved'}
+                {user?.role === 'accounts' ? 'Pending Verification' : 'Approved'}
               </p>
               <p className="mt-1 text-3xl font-semibold text-gray-900">
-                {user?.role === 'accounts' ? stats.pending : stats.approved}
+                {statsLoading ? (
+                  <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  user?.role === 'accounts' ? stats.pendingAccountsVerifications : stats.approved
+                )}
               </p>
             </div>
             <div className="p-3 bg-success-100 rounded-full">
@@ -448,22 +417,25 @@ const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-4">
             <div className="text-sm text-gray-500">
-              {user?.role === 'accounts'
-                ? `${((stats.pending / stats.total) * 100).toFixed(0)}% approval rate`
-                : stats.approved > 0
-                  ? `${((stats.approved / stats.total) * 100).toFixed(0)}% approval rate`
-                  : 'No approvals yet'}
+              {statsLoading ? (
+                <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+              ) : (
+                user?.role === 'accounts'
+                  ? `${((stats.pending / stats.total) * 100).toFixed(0)}% approval rate`
+                  : stats.approved > 0
+                    ? `${((stats.approved / stats.total) * 100).toFixed(0)}% approval rate`
+                    : 'No approvals yet'
+              )}
             </div>
           </div>
         </Card>
 
         <Card
-          className={`animate-fade-in delay-300 ${
-            user?.role === 'user' || user?.role === 'admin'
+          className={`animate-fade-in delay-300 ${user?.role === 'user' || user?.role === 'admin'
               ? 'cursor-pointer hover:shadow-md transition-shadow'
               : ''
-          }`}
-          onClick={() => handleCardClick('activity')}
+            }`}
+          onClick={() => handleCardClick(4)}
         >
           <div className="flex items-start justify-between">
             <div>
@@ -471,7 +443,11 @@ const DashboardPage: React.FC = () => {
                 Total Activity
               </p>
               <p className="mt-1 text-3xl font-semibold text-gray-900">
-                {stats.processed + stats.rejected}
+                {statsLoading ? (
+                  <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  stats.processed + stats.rejected
+                )}
               </p>
             </div>
             <div className="p-3 bg-blue-100 rounded-full">
@@ -480,7 +456,11 @@ const DashboardPage: React.FC = () => {
           </div>
           <div className="mt-4">
             <div className="text-sm text-gray-500">
-              {stats.processed} processed • {stats.rejected} rejected
+              {statsLoading ? (
+                <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+              ) : (
+                `${stats.processed} processed • ${stats.rejected} rejected`
+              )}
             </div>
           </div>
         </Card>
@@ -493,13 +473,13 @@ const DashboardPage: React.FC = () => {
             {user?.role === 'user'
               ? 'Your Recent Requests'
               : user?.role === 'admin'
-              ? 'Pending Approvals'
-              : 'Ready for Processing'}
+                ? 'Pending Approvals'
+                : 'Ready for Processing'}
           </h2>
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => handleCardClick('all')}
+            onClick={() => handleCardClick(1)}
             icon={<ArrowRight className="h-4 w-4" />}
           >
             View All

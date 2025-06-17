@@ -6,11 +6,11 @@ import {
   LogOut,
   Menu,
   X,
-  User,
   Wallet,
   BarChart3,
   FileText,
   Lock,
+  LayoutDashboard,
 } from 'lucide-react';
 import Button from '../ui/Button';
 import ChangePasswordDialog from '../auth/ChangePasswordDialog';
@@ -92,21 +92,6 @@ const Navbar: React.FC = () => {
                     Dashboard
                   </Link>
 
-                  <Link
-                    to="/payments"
-                    className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
-                  >
-                    Payments
-                  </Link>
-
-                  {(user.role === 'admin' || user.role === 'accounts') && (
-                    <Link
-                      to="/approvals"
-                      className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
-                    >
-                      Approvals
-                    </Link>
-                  )}
 
                   {user.role === 'accounts' && (
                     <Link
@@ -114,6 +99,15 @@ const Navbar: React.FC = () => {
                       className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
                     >
                       Export
+                    </Link>
+                  )}
+
+                  {user.role !== 'user' && (
+                    <Link
+                      to="/cms"
+                      className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
+                    >
+                      CMS
                     </Link>
                   )}
                 </div>
@@ -224,29 +218,6 @@ const Navbar: React.FC = () => {
                   </div>
                 </Link>
 
-                <Link
-                  to="/payments"
-                  className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  <div className="flex items-center">
-                    <Wallet className="h-5 w-5 mr-2" />
-                    Payments
-                  </div>
-                </Link>
-
-                {(user.role === 'admin' || user.role === 'accounts') && (
-                  <Link
-                    to="/approvals"
-                    className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    <div className="flex items-center">
-                      <FileText className="h-5 w-5 mr-2" />
-                      Approvals
-                    </div>
-                  </Link>
-                )}
 
                 {user.role === 'accounts' && (
                   <Link
@@ -257,6 +228,19 @@ const Navbar: React.FC = () => {
                     <div className="flex items-center">
                       <FileText className="h-5 w-5 mr-2" />
                       Export
+                    </div>
+                  </Link>
+                )}
+
+                {user.role === 'accounts' && (
+                  <Link
+                    to="/cms"
+                    className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-50"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <div className="flex items-center">
+                      <LayoutDashboard className="h-5 w-5 mr-2" />
+                      CMS
                     </div>
                   </Link>
                 )}

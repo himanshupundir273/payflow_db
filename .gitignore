@@ -25,7 +25,8 @@ dist-ssr
 
 # Environment variables
 .env
-.env.prod
+.env.production
+.env.development
 android
 ios
 .bolt

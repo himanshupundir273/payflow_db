@@ -25,7 +25,7 @@ const FundStats: React.FC = () => {
       }
     };
     initializeFundStats();
-  }, [getFundStats]);
+  }, []);
 
   const handleAddFund = async () => {
     if (!fundAmount || isNaN(parseFloat(fundAmount.replace(/,/g, '')))) return;

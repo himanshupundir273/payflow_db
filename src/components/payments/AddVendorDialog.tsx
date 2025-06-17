@@ -121,6 +121,8 @@ const AddVendorDialog: React.FC<AddVendorDialogProps> = ({
           name: values.name.trim().toUpperCase(),
           account_number: values.accountNumber.trim(),
           ifsc_code: values.ifscCode.trim(),
+          added_by: (await supabase.auth.getUser()).data.user?.id,
+          status: 'pending'
         })
         .select()
         .single();
@@ -138,6 +140,8 @@ const AddVendorDialog: React.FC<AddVendorDialogProps> = ({
           name: data.name,
           accountNumber: data.account_number,
           ifscCode: data.ifsc_code,
+          addedBy: data.added_by,
+          status: data.status,
           createdAt: data.created_at,
           updatedAt: data.updated_at,
         };
@@ -219,21 +223,29 @@ const AddVendorDialog: React.FC<AddVendorDialogProps> = ({
                   </p>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Account Number <span className="text-error-500">*</span>
+                <div className="space-y-1">
+                  <label htmlFor="accountNumber" className="block text-sm font-medium text-gray-700">
+                    Account Number
                   </label>
                   <Field
                     as={Input}
+                    id="accountNumber"
                     name="accountNumber"
-                    placeholder="Enter account number"
-                    error={touched.accountNumber && errors.accountNumber}
+                    type="text"
                     fullWidth
-                    required
+                    placeholder="Enter account number"
+                    value={values.accountNumber}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const numericValue = e.target.value.replace(/[^0-9]/g, '');
+                      setFieldValue('accountNumber', numericValue);
+                    }}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Must be unique across all vendors
+                    Only numbers are allowed (8-20 digits)
                   </p>
+                  {errors.accountNumber && touched.accountNumber && (
+                    <p className="text-sm text-red-600">{errors.accountNumber}</p>
+                  )}
                 </div>
 
                 <div>

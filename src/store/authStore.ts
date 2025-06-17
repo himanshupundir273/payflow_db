@@ -8,19 +8,22 @@ import { withNetworkCheck } from '../lib/network';
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  initializeAuth: () => Promise<void>;
+  initializeAuth: () => Promise<boolean>;
   changePassword: (newPassword: string) => Promise<boolean>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
+  isLoading: true,
   
   initializeAuth: async () => {
     const result = await withNetworkCheck(async () => {
       try {
+        set({ isLoading: true });
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
@@ -42,23 +45,38 @@ export const useAuthStore = create<AuthState>((set) => ({
 
           set({ 
             user: userData,
-            isAuthenticated: true 
+            isAuthenticated: true,
+            isLoading: false 
           });
           
           // Don't fetch payments during initialization - they will be fetched
           // when the dashboard loads or user navigates to a page that needs them
           // This prevents duplicate API calls on app startup
+        } else {
+          set({
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+          });
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
         showErrorToast('Failed to initialize authentication');
+        set({
+          user: null,
+          isAuthenticated: false,
+          isLoading: false,
+        });
       }
     }, 'Failed to initialize authentication. Please check your internet connection.');
+
+    return result || false;
   },
   
   login: async (email: string, password: string) => {
     const result = await withNetworkCheck(async () => {
       try {
+        set({ isLoading: true });
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email,
           password
@@ -85,9 +103,18 @@ export const useAuthStore = create<AuthState>((set) => ({
           return false;
         }
 
+        // Check if user is inactive
+        if (userData.status === 'inactive') {
+          // Sign out the user since they're inactive
+          await supabase.auth.signOut();
+          showErrorToast('Your account has been deactivated. Please contact your administrator.');
+          return false;
+        }
+
         set({ 
           user: userData,
-          isAuthenticated: true 
+          isAuthenticated: true,
+          isLoading: false 
         });
 
         // Fetch payments after successful login
@@ -98,6 +125,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       } catch (error) {
         console.error('Login error:', error);
         showErrorToast('Login failed. Please try again.');
+        set({ isLoading: false });
         return false;
       }
     }, 'Login failed. Please check your internet connection.');
@@ -108,15 +136,17 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: async () => {
     const result = await withNetworkCheck(async () => {
       try {
+        set({ isLoading: true });
         const { error } = await supabase.auth.signOut();
         if (error) {
           handleSupabaseError(error);
           return;
         }
-        set({ user: null, isAuthenticated: false });
+        set({ user: null, isAuthenticated: false, isLoading: false });
       } catch (error) {
         console.error('Logout error:', error);
         showErrorToast('Failed to logout. Please try again.');
+        set({ isLoading: false });
       }
     }, 'Failed to logout. Please check your internet connection.');
   },
@@ -141,13 +171,14 @@ export const useAuthStore = create<AuthState>((set) => ({
           if (logoutError) {
             console.error('Logout after password change failed:', logoutError);
           }
-          set({ user: null, isAuthenticated: false });
+          set({ user: null, isAuthenticated: false, isLoading: false });
         }, 1000); // Small delay to show the success message
         
         return true;
       } catch (error) {
         console.error('Password change error:', error);
         showErrorToast('Failed to update password. Please try again.');
+        set({ isLoading: false });
         return false;
       }
     }, 'Failed to update password. Please check your internet connection.');

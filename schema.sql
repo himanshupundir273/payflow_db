@@ -518,6 +518,18 @@ CREATE POLICY "Users can update bills for their payments" ON "public"."bills" FO
 CREATE POLICY "Users can update their own payments" ON "public"."payments" FOR UPDATE USING (("requested_by" = "auth"."uid"()));
 
 
+CREATE POLICY "Enable insert for admin and accounts users"
+ON "public"."users"
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM users users_1
+    WHERE users_1.id = auth.uid()
+    AND users_1.role IN ('admin', 'accounts')
+  )
+); 
 
 CREATE POLICY "Users can view all payment history" ON "public"."payment_history" FOR SELECT TO "authenticated" USING (true);
 
@@ -894,5 +906,61 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 
 
 
+
+GRANT SELECT ON public.users TO authenticated;
+GRANT INSERT ON public.users TO authenticated;
+GRANT UPDATE ON public.users TO authenticated;
+
+-- Enable Row Level Security
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+-- Policy to allow anyone to view all users
+CREATE POLICY "Anyone can view users"
+ON public.users
+FOR SELECT
+TO public
+USING (true);
+
+-- Policy to allow only admin and accounts users to modify users
+CREATE POLICY "Only admin and accounts can modify users"
+ON public.users
+FOR ALL
+TO authenticated
+USING (
+  CASE 
+    -- Allow if the user is modifying their own row (for initial creation)
+    WHEN auth.uid() = id THEN true
+    -- Otherwise check for admin/accounts role
+    ELSE (auth.jwt() ->> 'role')::text IN ('admin', 'accounts')
+  END
+)
+WITH CHECK (
+  CASE 
+    -- Allow if the user is modifying their own row (for initial creation)
+    WHEN auth.uid() = id THEN true
+    -- Otherwise check for admin/accounts role
+    ELSE (auth.jwt() ->> 'role')::text IN ('admin', 'accounts')
+  END
+);
+
+
+
+ALTER TABLE payments
+ADD COLUMN quantity_checked_by UUID REFERENCES users(id),
+ADD COLUMN quality_checked_by UUID REFERENCES users(id),
+ADD COLUMN purchase_owner UUID REFERENCES users(id),
+ADD COLUMN price_check_guaranteed_by UUID REFERENCES users(id);
+
+-- Add indexes for better query performance
+CREATE INDEX idx_payments_quantity_checked_by ON payments(quantity_checked_by);
+CREATE INDEX idx_payments_quality_checked_by ON payments(quality_checked_by);
+CREATE INDEX idx_payments_purchase_owner ON payments(purchase_owner);
+CREATE INDEX idx_payments_price_check_guaranteed_by ON payments(price_check_guaranteed_by);
+
+-- Add comments to document the purpose of each column
+COMMENT ON COLUMN payments.quantity_checked_by IS 'User who verified the quantity of items';
+COMMENT ON COLUMN payments.quality_checked_by IS 'User who verified the quality of items';
+COMMENT ON COLUMN payments.purchase_owner IS 'User who owns the purchase process';
+COMMENT ON COLUMN payments.price_check_guaranteed_by IS 'User who guaranteed the price check (required)';
 
 RESET ALL;

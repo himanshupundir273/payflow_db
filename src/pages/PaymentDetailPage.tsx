@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { usePaymentStore } from '../store/paymentStore';
 import { PaymentRequest } from '../types';
@@ -16,11 +16,19 @@ import {
   File,
   Building2,
   Calendar,
+  ClipboardCheck,
+  ShieldCheck,
+  UserCheck,
+  BadgeCheck,
+  ChevronLeft,
+  ChevronRight,
+  QuoteIcon,
 } from 'lucide-react';
 import PaymentStatusBadge from '../components/payments/PaymentStatusBadge';
 import QueryDialog from '../components/payments/QueryDialog';
 import AccountsQueryDialog from '../components/payments/AccountsQueryDialog';
 import ProcessPaymentDialog from '../components/payments/ProcessPaymentDialog';
+import ApprovePaymentDialog from '../components/payments/ApprovePaymentDialog';
 import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -30,6 +38,7 @@ import { toast } from 'react-hot-toast';
 
 const PaymentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const {
@@ -42,18 +51,56 @@ const PaymentDetailPage: React.FC = () => {
     updatePayment,
     markInvoiceReceived,
     isLoading,
+    payments,
+    fetchPayments,
+    filterOptions,
+    fetchDashboardPayments,
+    setFilterOptions,
   } = usePaymentStore();
+
+  // Get navigation state from URL
+  const showNavigation = searchParams.get('nav') === 'true';
+  const source = searchParams.get('source');
 
   // Local state for the current payment details
   const [payment, setPayment] = useState<PaymentRequest | null>(null);
   const [isQueryDialogOpen, setIsQueryDialogOpen] = useState(false);
-  const [isAccountsQueryDialogOpen, setIsAccountsQueryDialogOpen] =
-    useState(false);
+  const [isAccountsQueryDialogOpen, setIsAccountsQueryDialogOpen] = useState(false);
   const [isProcessDialogOpen, setIsProcessDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isLoadingPayment, setIsLoadingPayment] = useState(true);
+  const [userNames, setUserNames] = useState<Record<string, { name: string; email: string }>>({});
+  const [categoryName, setCategoryName] = useState<string | null>(null);
+  const [subcategoryName, setSubcategoryName] = useState<string | null>(null);
+  const [vendorDetails, setVendorDetails] = useState<{ isApproved: boolean } | null>(null);
+  const [categoryDetails, setCategoryDetails] = useState<{ isApproved: boolean; name: string } | null>(null);
+  const [subcategoryDetails, setSubcategoryDetails] = useState<{ isApproved: boolean; name: string } | null>(null);
+  const [currentPaymentIndex, setCurrentPaymentIndex] = useState<number>(-1);
+  const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
+
+  // Find current payment index when payment or payments list changes
+  useEffect(() => {
+    if (payment && payments.length > 0) {
+      const index = payments.findIndex(p => p.id === payment.id);
+      setCurrentPaymentIndex(index);
+    }
+  }, [payment, payments]);
+
+  const handlePrevious = () => {
+    if (currentPaymentIndex > 0) {
+      const prevPayment = payments[currentPaymentIndex - 1];
+      navigate(`/payments/${prevPayment.id}?nav=true&source=${source}`);
+    }
+  };
+
+  const handleNext = () => {
+    if (currentPaymentIndex < payments.length - 1) {
+      const nextPayment = payments[currentPaymentIndex + 1];
+      navigate(`/payments/${nextPayment.id}?nav=true&source=${source}`);
+    }
+  };
 
   // Fetch payment details when component mounts or id changes
   useEffect(() => {
@@ -63,7 +110,118 @@ const PaymentDetailPage: React.FC = () => {
       setIsLoadingPayment(true);
       try {
         const paymentDetails = await fetchPaymentById(id);
-        setPayment(paymentDetails);
+        console.log('Payment Details:', paymentDetails); // Debug log
+
+        if (paymentDetails) {
+          // Fetch bills data
+          const { data: billsData, error: billsError } = await supabase
+            .from('bills')
+            .select('*')
+            .eq('payment_id', id);
+
+          if (billsError) {
+            console.error('Error fetching bills:', billsError);
+          } else {
+            // Transform snake_case to camelCase
+            const transformedBills = billsData?.map(bill => ({
+              id: bill.id,
+              billNumber: bill.bill_number,
+              billDate: bill.bill_date,
+              createdAt: bill.created_at,
+              updatedAt: bill.updated_at
+            })) || [];
+            // Update payment details with bills data
+            paymentDetails.bills = transformedBills;
+          }
+
+          setPayment(paymentDetails);
+        }
+
+        // Fetch user names for the additional details
+        if (paymentDetails) {
+          const userIds = [
+            paymentDetails.quantityCheckedBy,
+            paymentDetails.qualityCheckedBy,
+            paymentDetails.purchaseOwner,
+            paymentDetails.priceCheckGuaranteedBy
+          ].filter(Boolean);
+
+          if (userIds.length > 0) {
+            const { data: users, error } = await supabase
+              .from('users')
+              .select('id, name, email')
+              .in('id', userIds);
+
+            if (!error && users) {
+              const nameMap = users.reduce((acc, user) => ({
+                ...acc,
+                [user.id]: { name: user.name, email: user.email }
+              }), {});
+              setUserNames(nameMap);
+            }
+          }
+
+          // Fetch vendor details
+          if (paymentDetails.vendorId) {
+            const { data: vendor, error: vendorError } = await supabase
+              .from('vendors')
+              .select('status')
+              .eq('id', paymentDetails.vendorId)
+              .single();
+
+            if (!vendorError && vendor) {
+              console.log('Vendor Details:', {
+                id: paymentDetails.vendorId,
+                status: vendor.status
+              });
+              setVendorDetails({ isApproved: vendor.status === 'approved' });
+            }
+          }
+
+          // Fetch category details
+          if (paymentDetails.categoryId) {
+            const { data: category, error: categoryError } = await supabase
+              .from('categories')
+              .select('status, name')
+              .eq('id', paymentDetails.categoryId)
+              .single();
+
+            if (!categoryError && category) {
+              console.log('Category Details:', {
+                id: paymentDetails.categoryId,
+                name: category.name,
+                status: category.status
+              });
+              setCategoryDetails({
+                isApproved: category.status === 'approved',
+                name: category.name
+              });
+              setCategoryName(category.name);
+            }
+          }
+
+          // Fetch subcategory details
+          if (paymentDetails.subcategoryId) {
+            const { data: subcategory, error: subcategoryError } = await supabase
+              .from('subcategories')
+              .select('status, name')
+              .eq('id', paymentDetails.subcategoryId)
+              .single();
+
+            if (!subcategoryError && subcategory) {
+              console.log('Subcategory Details:', {
+                id: paymentDetails.subcategoryId,
+                name: subcategory.name,
+                status: subcategory.status
+              });
+              setSubcategoryDetails({
+                isApproved: subcategory.status === 'approved',
+                name: subcategory.name
+              });
+              setSubcategoryName(subcategory.name);
+            }
+          }
+        }
       } catch (error) {
         console.error('Error fetching payment details:', error);
         toast.error('Failed to load payment details');
@@ -112,11 +270,9 @@ const PaymentDetailPage: React.FC = () => {
 
           if (!error && data?.signedUrl) {
             // Convert the signed URL to the correct format
-            const signedUrl = `${
-              import.meta.env.VITE_SUPABASE_URL
-            }/storage/v1/object/sign/attachments/${attachment.fileUrl}?token=${
-              data.signedUrl.split('token=')[1]
-            }`;
+            const signedUrl = `${import.meta.env.VITE_SUPABASE_URL
+              }/storage/v1/object/sign/attachments/${attachment.fileUrl}?token=${data.signedUrl.split('token=')[1]
+              }`;
             urls[attachment.id] = signedUrl;
           }
         } catch (error) {
@@ -134,6 +290,25 @@ const PaymentDetailPage: React.FC = () => {
   useEffect(() => {
     fetchSignedUrls();
   }, [payment?.attachments, isOnline]);
+
+  const fetchCategoryDetails = async (categoryId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select(`
+          *,
+          added_by_user:users(name)
+        `)
+        .eq('id', categoryId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('Error fetching category details:', err);
+      return null;
+    }
+  };
 
   if (isLoadingPayment) {
     return (
@@ -177,30 +352,101 @@ const PaymentDetailPage: React.FC = () => {
     );
   }
 
-  const handleApprove = async () => {
+  const handleApprove = () => {
+    setIsApproveDialogOpen(true);
+  };
+
+  const handleApproveSubmit = async (paymentAmount: number, reason: string) => {
     if (!user || !payment) return;
-    await approvePayment(payment.id, user);
-    // Navigate back to previous screen after approval
-    navigate(-1);
+    await approvePayment(payment.id, user, paymentAmount, reason);
+    setIsApproveDialogOpen(false);
+    // Refresh payments list and get the response
+    const response = await fetchPayments(1, 10, true, filterOptions);
+    // If we're in navigation mode and there are no more payments, go to payments page
+    if (showNavigation && (!response?.payments || response.payments.length === 0)) {
+      // Clear all filters and navigate to payments page
+      setFilterOptions({
+        status: ['pending', 'approved', 'rejected', 'processed', 'query_raised'],
+        dateRange: { start: null, end: null },
+        vendor: null,
+        company: null,
+        companyList: null,
+        overdueInvoices: false,
+        hasAccountsQuery: false,
+      });
+      navigate('/payments');
+      return;
+    }
+    // If we're in navigation mode and there are more payments, go to next
+    if (showNavigation && response?.payments && response.payments.length > 0) {
+      const nextPayment = response.payments[0]; // Get the first payment from the updated list
+      navigate(`/payments/${nextPayment.id}?nav=true`);
+    } else {
+      navigate(-1);
+    }
   };
 
   const handleReject = async () => {
     if (!user || !payment) return;
     await rejectPayment(payment.id, user);
-    // Navigate back to previous screen after rejection
-    navigate(-1);
+    // Refresh payments list and get the response
+    const response = await fetchPayments(1, 10, true, filterOptions);
+    // If we're in navigation mode and there are no more payments, go to payments page
+    if (showNavigation && (!response?.payments || response.payments.length === 0)) {
+      // Clear all filters and navigate to payments page
+      setFilterOptions({
+        status: ['pending', 'approved', 'rejected', 'processed', 'query_raised'],
+        dateRange: { start: null, end: null },
+        vendor: null,
+        company: null,
+        companyList: null,
+        overdueInvoices: false,
+        hasAccountsQuery: false,
+      });
+      navigate('/payments');
+      return;
+    }
+    // If we're in navigation mode and there are more payments, go to next
+    if (showNavigation && response?.payments && response.payments.length > 0) {
+      const nextPayment = response.payments[0]; // Get the first payment from the updated list
+      navigate(`/payments/${nextPayment.id}?nav=true`);
+    } else {
+      navigate(-1);
+    }
   };
 
   const handleProcess = async () => {
     setIsProcessDialogOpen(true);
   };
 
-  const handleProcessSubmit = async (invoiceReceived: 'yes' | 'no') => {
+  const handleProcessSubmit = async (invoiceReceived: 'yes' | 'no', paymentAmount: number, reason: string) => {
     if (!payment) return;
-    await markAsProcessed(payment.id, invoiceReceived);
+    await markAsProcessed(payment.id, invoiceReceived, paymentAmount, reason);
     setIsProcessDialogOpen(false);
-    // Navigate back to previous screen after processing
-    navigate(-1);
+    // Refresh payments list and get the response
+    const response = await fetchPayments(1, 10, true, filterOptions);
+    // If we're in navigation mode and there are no more payments, go to payments page
+    if (showNavigation && (!response?.payments || response.payments.length === 0)) {
+      // Clear all filters and navigate to payments page
+      setFilterOptions({
+        status: ['pending', 'approved', 'rejected', 'processed', 'query_raised'],
+        dateRange: { start: null, end: null },
+        vendor: null,
+        company: null,
+        companyList: null,
+        overdueInvoices: false,
+        hasAccountsQuery: false,
+      });
+      navigate('/payments');
+      return;
+    }
+    // If we're in navigation mode and there are more payments, go to next
+    if (showNavigation && response?.payments && response.payments.length > 0) {
+      const nextPayment = response.payments[0]; // Get the first payment from the updated list
+      navigate(`/payments/${nextPayment.id}?nav=true`);
+    } else {
+      navigate(-1);
+    }
   };
 
   const handleQuery = () => {
@@ -211,8 +457,30 @@ const PaymentDetailPage: React.FC = () => {
     if (!user || !payment) return;
     await raiseQuery(payment.id, user, query);
     setIsQueryDialogOpen(false);
-    // Navigate back to previous screen after raising query
-    navigate(-1);
+    // Refresh payments list and get the response
+    const response = await fetchPayments(1, 10, true, filterOptions);
+    // If we're in navigation mode and there are no more payments, go to payments page
+    if (showNavigation && (!response?.payments || response.payments.length === 0)) {
+      // Clear all filters and navigate to payments page
+      setFilterOptions({
+        status: ['pending', 'approved', 'rejected', 'processed', 'query_raised'],
+        dateRange: { start: null, end: null },
+        vendor: null,
+        company: null,
+        companyList: null,
+        overdueInvoices: false,
+        hasAccountsQuery: false,
+      });
+      navigate('/payments');
+      return;
+    }
+    // If we're in navigation mode and there are more payments, go to next
+    if (showNavigation && response?.payments && response.payments.length > 0) {
+      const nextPayment = response.payments[0]; // Get the first payment from the updated list
+      navigate(`/payments/${nextPayment.id}?nav=true`);
+    } else {
+      navigate(-1);
+    }
   };
 
   const handleAccountsQuery = () => {
@@ -223,8 +491,30 @@ const PaymentDetailPage: React.FC = () => {
     if (!user || !payment) return;
     await raiseAccountsQuery(payment.id, user, query);
     setIsAccountsQueryDialogOpen(false);
-    // Navigate back to previous screen after raising accounts query
-    navigate(-1);
+    // Refresh payments list and get the response
+    const response = await fetchPayments(1, 10, true, filterOptions);
+    // If we're in navigation mode and there are no more payments, go to payments page
+    if (showNavigation && (!response?.payments || response.payments.length === 0)) {
+      // Clear all filters and navigate to payments page
+      setFilterOptions({
+        status: ['pending', 'approved', 'rejected', 'processed', 'query_raised'],
+        dateRange: { start: null, end: null },
+        vendor: null,
+        company: null,
+        companyList: null,
+        overdueInvoices: false,
+        hasAccountsQuery: false,
+      });
+      navigate('/payments');
+      return;
+    }
+    // If we're in navigation mode and there are more payments, go to next
+    if (showNavigation && response?.payments && response.payments.length > 0) {
+      const nextPayment = response.payments[0]; // Get the first payment from the updated list
+      navigate(`/payments/${nextPayment.id}?nav=true`);
+    } else {
+      navigate(-1);
+    }
   };
 
   const handleUpdate = async () => {
@@ -234,8 +524,12 @@ const PaymentDetailPage: React.FC = () => {
       status: 'pending',
     });
     setIsEditing(false);
-    // Navigate back to previous screen after update
-    navigate(-1);
+    if (showNavigation && currentPaymentIndex < payments.length - 1) {
+      const nextPayment = payments[currentPaymentIndex + 1];
+      navigate(`/payments/${nextPayment.id}?nav=true`);
+    } else {
+      navigate(-1);
+    }
   };
 
   const handleMarkInvoiceReceived = async () => {
@@ -246,11 +540,38 @@ const PaymentDetailPage: React.FC = () => {
       const success = await markInvoiceReceived(payment.id);
       if (success) {
         toast.success('Invoice marked as received successfully');
-        // Navigate back to previous screen after marking invoice received
-        navigate(-1);
+        if (showNavigation && currentPaymentIndex < payments.length - 1) {
+          const nextPayment = payments[currentPaymentIndex + 1];
+          navigate(`/payments/${nextPayment.id}?nav=true`);
+        } else {
+          navigate(-1);
+        }
       } else {
         toast.error('Failed to mark invoice as received');
       }
+    }
+  };
+
+  const handleVerify = async () => {
+    if (!payment) return;
+    try {
+      const { data, error } = await supabase
+        .from('payments')
+        .update({ accounts_verification_status: 'verified' })
+        .eq('id', payment.id);
+
+      if (error) throw error;
+
+      toast.success('Payment verified successfully');
+      if (showNavigation && currentPaymentIndex < payments.length - 1) {
+        const nextPayment = payments[currentPaymentIndex + 1];
+        navigate(`/payments/${nextPayment.id}?nav=true`);
+      } else {
+        navigate(-1);
+      }
+    } catch (error) {
+      console.error('Error verifying payment:', error);
+      toast.error('Failed to verify payment');
     }
   };
 
@@ -260,6 +581,9 @@ const PaymentDetailPage: React.FC = () => {
     // Convert the payment data to match the form's initial values structure
     const formData = {
       vendorName: payment.vendorName,
+      vendorId: payment.vendorId,
+      accountNumber: '', // For display only
+      ifscCode: '', // For display only
       totalOutstanding: payment.totalOutstanding.toString(),
       advanceDetails: payment.advanceDetails,
       paymentAmount: payment.paymentAmount.toString(),
@@ -271,9 +595,16 @@ const PaymentDetailPage: React.FC = () => {
       companyName: payment.companyName,
       companyBranch: payment.companyBranch,
       bankName: payment.bankName,
+      paymentMode: payment.paymentMode || 'net_banking',
       lpr: payment.lpr || '',
       ioa: payment.ioa || '',
       cpp: payment.cpp || '',
+      categoryId: payment.categoryId || '',
+      subcategoryId: payment.subcategoryId || '',
+      quantityCheckedBy: payment.quantityCheckedBy || '',
+      qualityCheckedBy: payment.qualityCheckedBy || '',
+      purchaseOwner: payment.purchaseOwner || '',
+      priceCheckGuaranteedBy: payment.priceCheckGuaranteedBy || '',
       attachments: payment.attachments.map((attachment) => ({
         id: attachment.id,
         description: attachment.description,
@@ -356,7 +687,13 @@ const PaymentDetailPage: React.FC = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => navigate(-1)}
+              onClick={() => {
+                if (source) {
+                  navigate(source);
+                } else {
+                  navigate(-1)
+                }
+              }}
               icon={<ArrowLeft className="h-5 w-5" />}
               className="mr-2"
             >
@@ -368,16 +705,45 @@ const PaymentDetailPage: React.FC = () => {
                 : 'Payment Details'}
             </h1>
           </div>
-          {payment.status === 'query_raised' && user?.role === 'user' && (
-            <Button
-              variant="primary"
-              onClick={handleEdit}
-              icon={<Edit className="h-5 w-5" />}
-              className="w-full sm:w-auto"
-            >
-              Edit Payment
-            </Button>
-          )}
+          <div className="flex items-center space-x-2">
+            {showNavigation && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handlePrevious}
+                  disabled={currentPaymentIndex <= 0}
+                  icon={<ChevronLeft className="h-5 w-5" />}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-500">
+                  {currentPaymentIndex + 1} of {payments.length}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleNext}
+                  disabled={currentPaymentIndex >= payments.length - 1}
+                  icon={<ChevronRight className="h-5 w-5" />}
+                >
+                  Next
+                </Button>
+              </>
+            )}
+            {(payment.status === 'query_raised' ||
+              payment.status === 'pending')
+              && user?.role === 'user' && (
+                <Button
+                  variant="primary"
+                  onClick={handleEdit}
+                  icon={<Edit className="h-5 w-5" />}
+                  className="w-full sm:w-auto"
+                >
+                  Edit Payment
+                </Button>
+              )}
+          </div>
         </div>
 
         <Card className="animate-fade-in">
@@ -392,10 +758,17 @@ const PaymentDetailPage: React.FC = () => {
                 <div className="min-w-0 flex-1">
                   <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 leading-tight break-words">
                     {payment.vendorName || 'Vendor Name Not Provided'}
+                    {payment.vendorId && vendorDetails?.isApproved && (
+                      <CheckCircle2 className="inline-block h-6 w-6 text-success-600 ml-2" />
+                    )}
                   </h2>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-0 space-y-2 sm:space-y-0">
-                    <div className="self-start">
+                    <div className="flex flex-col sm:flex-row items-start gap-2">
                       <PaymentStatusBadge status={payment.status} />
+                      {(payment?.accountsVerificationStatus === 'verified' &&
+                        !['query_raised', 'rejected'].includes(payment.status)) && (
+                          <PaymentStatusBadge status="accounts_approved" />
+                        )}
                     </div>
                     <div className="flex items-center space-x-2">
                       <span className="text-sm text-gray-500">
@@ -484,20 +857,41 @@ const PaymentDetailPage: React.FC = () => {
                       <span className="text-sm font-semibold text-gray-900">
                         {payment.vendorName || 'Not provided'}
                       </span>
+                      {payment.vendorId && vendorDetails?.isApproved && (
+                        <CheckCircle2 className="h-4 w-4 text-success-600" />
+                      )}
                     </div>
                   </div>
                   <div className="flex flex-col sm:flex-row justify-between">
-                    <span className="text-sm text-gray-500">
-                      Company/Branch:
-                    </span>
+                    <span className="text-sm text-gray-500">Category:</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-semibold text-gray-900">
+                        {categoryName || 'Not provided'}
+                      </span>
+                      {payment.categoryId && categoryDetails?.isApproved && (
+                        <CheckCircle2 className="h-4 w-4 text-success-600" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row justify-between">
+                    <span className="text-sm text-gray-500">Subcategory:</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm font-semibold text-gray-900">
+                        {subcategoryName || 'Not provided'}
+                      </span>
+                      {payment.subcategoryId && subcategoryDetails?.isApproved && (
+                        <CheckCircle2 className="h-4 w-4 text-success-600" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row justify-between">
+                    <span className="text-sm text-gray-500">Company/Branch:</span>
                     <span className="text-sm font-medium">
                       {payment.companyName}, {payment.companyBranch}
                     </span>
                   </div>
                   <div className="flex flex-col sm:flex-row justify-between">
-                    <span className="text-sm text-gray-500">
-                      Total Outstanding:
-                    </span>
+                    <span className="text-sm text-gray-500">Total Outstanding:</span>
                     <span className="text-sm font-medium">
                       {(payment.totalOutstanding || 0).toLocaleString('en-IN', {
                         style: 'currency',
@@ -564,6 +958,16 @@ const PaymentDetailPage: React.FC = () => {
                       })}
                     </span>
                   </div>
+                  {payment.amountChangeReason && (
+                    <div className="flex flex-col sm:flex-row justify-between border-t pt-2 mt-1">
+                      <span className="text-sm text-gray-500">
+                        Amount Change Reason:
+                      </span>
+                      <span className="text-sm font-medium">
+                        {payment.amountChangeReason}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex flex-col sm:flex-row justify-between border-t pt-2 mt-1">
                     <span className="text-sm text-gray-500">
                       Balance Amount:
@@ -591,51 +995,26 @@ const PaymentDetailPage: React.FC = () => {
                           <div className="border-t border-gray-200 pt-3"></div>
                         )}
                         <div className="space-y-2">
-                          <div className="hidden md:block">
-                            <div className="flex flex-col sm:flex-row justify-between">
-                              <span className="text-sm text-gray-500">
-                                Bill Number:
-                              </span>
-                              <span className="text-sm font-medium">
-                                {bill.billNumber || 'Not provided'}
-                              </span>
-                            </div>
-                            <div className="flex flex-col sm:flex-row justify-between">
-                              <span className="text-sm text-gray-500">
-                                Bill Date:
-                              </span>
-                              <span className="text-sm font-medium">
-                                {bill.billDate
-                                  ? format(
-                                      new Date(bill.billDate),
-                                      'dd MMM yyyy'
-                                    )
-                                  : 'Not specified'}
-                              </span>
-                            </div>
+                          <div className="flex flex-col sm:flex-row justify-between">
+                            <span className="text-sm text-gray-500">
+                              Bill Number:
+                            </span>
+                            <span className="text-sm font-medium">
+                              {bill.billNumber || 'Not provided'}
+                            </span>
                           </div>
-                          <div className="md:hidden">
-                            <div>
-                              <span className="text-sm text-gray-500">
-                                Bill Number
-                              </span>
-                              <span className="text-sm font-medium block">
-                                {bill.billNumber || 'Not provided'}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-sm text-gray-500">
-                                Bill Date
-                              </span>
-                              <span className="text-sm font-medium block">
-                                {bill.billDate
-                                  ? format(
-                                      new Date(bill.billDate),
-                                      'dd MMM yyyy'
-                                    )
-                                  : 'Not specified'}
-                              </span>
-                            </div>
+                          <div className="flex flex-col sm:flex-row justify-between">
+                            <span className="text-sm text-gray-500">
+                              Bill Date:
+                            </span>
+                            <span className="text-sm font-medium">
+                              {bill.billDate
+                                ? format(
+                                  new Date(bill.billDate),
+                                  'dd MMM yyyy'
+                                )
+                                : 'Not specified'}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -644,6 +1023,79 @@ const PaymentDetailPage: React.FC = () => {
                     <p className="text-sm text-gray-500">No bills available</p>
                   )}
                 </div>
+              </div>
+            </div>
+
+            {/* Additional Details Section */}
+            <div className="mb-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <h3 className="text-base font-semibold text-gray-900">Additional Details</h3>
+                <div className="h-px flex-1 bg-gray-200"></div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-2">
+                {(payment.quantityCheckedBy || payment.qualityCheckedBy || payment.purchaseOwner || payment.priceCheckGuaranteedBy) ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {payment.quantityCheckedBy && (
+                      <div className="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Quantity Checked By</p>
+                          <p className="text-base font-semibold text-gray-900 mb-0.5">
+                            {userNames[payment.quantityCheckedBy]?.name || 'Loading...'}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {userNames[payment.quantityCheckedBy]?.email || ''}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {payment.qualityCheckedBy && (
+                      <div className="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Quality Checked By</p>
+                          <p className="text-base font-semibold text-gray-900 mb-0.5">
+                            {userNames[payment.qualityCheckedBy]?.name || 'Loading...'}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {userNames[payment.qualityCheckedBy]?.email || ''}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {payment.purchaseOwner && (
+                      <div className="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Purchase Owner</p>
+                          <p className="text-base font-semibold text-gray-900 mb-0.5">
+                            {userNames[payment.purchaseOwner]?.name || 'Loading...'}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {userNames[payment.purchaseOwner]?.email || ''}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {payment.priceCheckGuaranteedBy && (
+                      <div className="p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Price Check Guaranteed By</p>
+                          <p className="text-base font-semibold text-gray-900 mb-0.5">
+                            {userNames[payment.priceCheckGuaranteedBy]?.name || 'Loading...'}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            {userNames[payment.priceCheckGuaranteedBy]?.email || ''}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-4 bg-white rounded-lg">
+                    <p className="text-sm text-gray-500">No additional details available</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -792,6 +1244,29 @@ const PaymentDetailPage: React.FC = () => {
                 </div>
               )}
 
+              {user?.role === 'accounts' &&
+                payment.status === 'pending' &&
+                payment.accountsVerificationStatus !== 'verified' && (
+                  <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 mt-6">
+                    <Button
+                      variant="warning"
+                      icon={<AlertCircle className="h-5 w-5" />}
+                      onClick={handleQuery}
+                      className="w-full sm:w-auto"
+                    >
+                      Query
+                    </Button>
+                    <Button
+                      variant="success"
+                      icon={<CheckCircle2 className="h-5 w-5" />}
+                      onClick={handleVerify}
+                      className="w-full sm:w-auto"
+                    >
+                      Verify
+                    </Button>
+                  </div>
+                )}
+
               {/* Mark invoice received for processed advance payments */}
               {user?.role === 'accounts' &&
                 payment.status === 'processed' &&
@@ -830,6 +1305,14 @@ const PaymentDetailPage: React.FC = () => {
           isOpen={isProcessDialogOpen}
           onClose={() => setIsProcessDialogOpen(false)}
           onSubmit={handleProcessSubmit}
+          currentPaymentAmount={payment?.paymentAmount || 0}
+        />
+
+        <ApprovePaymentDialog
+          isOpen={isApproveDialogOpen}
+          onClose={() => setIsApproveDialogOpen(false)}
+          onSubmit={handleApproveSubmit}
+          currentPaymentAmount={payment?.paymentAmount || 0}
         />
       </div>
     </>

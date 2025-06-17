@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PaymentRequest } from '../../types';
 import { format } from 'date-fns';
 import PaymentStatusBadge from './PaymentStatusBadge';
@@ -10,6 +10,8 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
@@ -20,19 +22,26 @@ import AccountsQueryDialog from './AccountsQueryDialog';
 import ProcessPaymentDialog from './ProcessPaymentDialog';
 import ApprovePaymentDialog from './ApprovePaymentDialog';
 import { useAuthStore } from '../../store/authStore';
+import Tooltip from '../../components/ui/Tooltip';
 
 interface PaymentTableProps {
   payments: PaymentRequest[];
+  detailNav?: boolean;
+  source?: string;
   isLoading?: boolean;
   showActions?: boolean;
-  onApprove?: (id: string, paymentAmount: number) => void;
+  onApprove?: (id: string, paymentAmount: number, reason: string) => void;
   onReject?: (id: string) => void;
   onBulkApprove?: (ids: string[]) => void;
   onBulkReject?: (ids: string[]) => void;
-  onProcess?: (id: string, invoiceReceived: 'yes' | 'no') => void;
+  onBulkProcess?: (ids: string[]) => void;
+  onBulkAccountsVerify?: (ids: string[]) => void;
+  onBulkMarkInvoiceRecieved?: (ids: string[]) => void;
+  onProcess?: (id: string, invoiceReceived: 'yes' | 'no', paymentAmount: number, reason: string) => void;
   onQuery?: (id: string, query: string) => void;
   onAccountsQuery?: (id: string, query: string) => void;
   onMarkInvoiceReceived?: (id: string) => void;
+  onVerify?: (id: string) => void;
   enableBulkSelection?: boolean;
   maxSelections?: number;
   hideControls?: boolean;
@@ -56,22 +65,30 @@ interface PaymentTableProps {
 
 const PaymentTable: React.FC<PaymentTableProps> = ({
   payments,
+  detailNav,
+  source,
   isLoading = false,
   showActions = false,
   onApprove,
   onReject,
   onBulkApprove,
   onBulkReject,
+  onBulkProcess,
   onProcess,
   onQuery,
   onAccountsQuery,
   onMarkInvoiceReceived,
+  onBulkMarkInvoiceRecieved,
+  onBulkAccountsVerify,
+  onVerify,
   enableBulkSelection = false,
   maxSelections = 0,
   hideControls = false,
   serverPagination,
 }) => {
   const { user } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const pageType = searchParams.get('type') ?? 'query';
   const navigate = useNavigate();
 
   // Use server-side search when available, otherwise use local search
@@ -99,13 +116,13 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
-    message: string;
+    message: string | React.ReactNode;
     action: () => void;
   }>({
     isOpen: false,
     title: '',
     message: '',
-    action: () => {},
+    action: () => { },
   });
   const [queryDialog, setQueryDialog] = useState<{
     isOpen: boolean;
@@ -126,9 +143,11 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const [processDialog, setProcessDialog] = useState<{
     isOpen: boolean;
     paymentId: string;
+    currentPaymentAmount: number;
   }>({
     isOpen: false,
     paymentId: '',
+    currentPaymentAmount: 0,
   });
 
   const [approveDialog, setApproveDialog] = useState<{
@@ -311,7 +330,11 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   };
 
   const handleRowClick = (payment: PaymentRequest) => {
-    navigate(`/payments/${payment.id}`);
+    if (detailNav) {
+      navigate(`/payments/${payment.id}?nav=true&source=${source}`);
+    } else {
+      navigate(`/payments/${payment.id}`);
+    }
   };
 
   const handleApprove = (id: string, currentPaymentAmount: number) => {
@@ -322,8 +345,8 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     });
   };
 
-  const handleApproveSubmit = (paymentAmount: number) => {
-    onApprove?.(approveDialog.paymentId, paymentAmount);
+  const handleApproveSubmit = (paymentAmount: number, reason: string) => {
+    onApprove?.(approveDialog.paymentId, paymentAmount, reason);
     setApproveDialog((prev) => ({ ...prev, isOpen: false }));
   };
 
@@ -339,15 +362,16 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     });
   };
 
-  const handleProcess = (id: string) => {
+  const handleProcess = (id: string, currentPaymentAmount: number) => {
     setProcessDialog({
       isOpen: true,
       paymentId: id,
+      currentPaymentAmount,
     });
   };
 
-  const handleProcessSubmit = (invoiceReceived: 'yes' | 'no') => {
-    onProcess?.(processDialog.paymentId, invoiceReceived);
+  const handleProcessSubmit = (invoiceReceived: 'yes' | 'no', paymentAmount: number, reason: string) => {
+    onProcess?.(processDialog.paymentId, invoiceReceived, paymentAmount, reason);
     setProcessDialog((prev) => ({ ...prev, isOpen: false }));
   };
 
@@ -376,13 +400,58 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     });
   };
 
+  const handleVerify = (id: string) => {
+    const payment = payments.find(p => p.id === id);
+    if (!payment) return;
+
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Verify Payment',
+      message: (
+        <div className="space-y-2">
+          <p>Are you sure you want to verify this payment request?</p>
+          <div className="mt-4 space-y-2 text-sm text-gray-600">
+            <div className="flex justify-between">
+              <span className="font-medium">Amount:</span>
+              <span>{payment.paymentAmount.toLocaleString('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+                maximumFractionDigits: 0,
+              })}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Vendor:</span>
+              <span>{payment.vendorName}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Company:</span>
+              <span>{payment.companyName}, {payment.companyBranch}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">Payment Against:</span>
+              <span>{payment.advanceDetails.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}</span>
+            </div>
+          </div>
+        </div>
+      ),
+      action: () => {
+        onVerify?.(id);
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
   // Selection handlers
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      // Only select eligible payments (pending status for admin)
+      // Only select eligible payments based on user role
       const eligiblePayments = paginatedPayments
         .filter(
-          (payment) => user?.role === 'admin' && payment.status === 'pending'
+          (payment) =>
+            (user?.role === 'admin' && payment.status === 'pending') ||
+            (user?.role === 'accounts' && payment.status === 'approved') ||
+            (user?.role === 'accounts' && payment.status === 'processed') ||
+            (user?.role === 'accounts' && payment.status === 'pending')
         )
         .slice(0, maxSelections || 10)
         .map((payment) => payment.id);
@@ -427,6 +496,45 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
       message: `Are you sure you want to reject ${selectedPayments.size} payment(s)?`,
       action: () => {
         onBulkReject?.(Array.from(selectedPayments));
+        setSelectedPayments(new Set());
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const handleBulkProcess = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Bulk Process Payments',
+      message: `Are you sure you want to process ${selectedPayments.size} payment(s)?`,
+      action: () => {
+        onBulkProcess?.(Array.from(selectedPayments));
+        setSelectedPayments(new Set());
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const handleBulkAccountsVerify = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Bulk Accounts Verify Payments',
+      message: `Are you sure you want to verify ${selectedPayments.size} payment(s)?`,
+      action: () => {
+        onBulkAccountsVerify?.(Array.from(selectedPayments));
+        setSelectedPayments(new Set());
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const handleBulkMarkInvoiceRecieved = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Bulk Mark Invoice Recieved',
+      message: `Are you sure you want to mark invoice recieved for ${selectedPayments.size} payment(s)?`,
+      action: () => {
+        onBulkMarkInvoiceRecieved?.(Array.from(selectedPayments));
         setSelectedPayments(new Set());
         setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
       },
@@ -530,7 +638,6 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
       </Card>
     );
   }
-
   return (
     <>
       <Card>
@@ -598,9 +705,8 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   <span>
                     {isSearching
                       ? 'Searching...'
-                      : `Showing ${
-                          displayStartIndex + 1
-                        }-${displayEndIndex} of ${displayTotalCount} payments`}
+                      : `Showing ${displayStartIndex + 1
+                      }-${displayEndIndex} of ${displayTotalCount} payments`}
                   </span>
                 </div>
               </div>
@@ -609,7 +715,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
         )}
 
         {/* Bulk Actions Bar */}
-        {enableBulkSelection && showBulkActions && user?.role === 'admin' && (
+        {enableBulkSelection && showBulkActions && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 mb-4 shadow-sm">
             <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:justify-between sm:space-y-0">
               {/* Selection Info */}
@@ -628,30 +734,78 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
               {/* Action Buttons */}
               <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-2">
                 <div className="flex space-x-2">
-                  <Button
-                    size="sm"
-                    variant="success"
-                    onClick={handleBulkApprove}
-                    disabled={selectedPayments.size === 0}
-                    className="flex-1 sm:flex-none text-xs sm:text-sm"
-                  >
-                    <span className="hidden sm:inline">Approve Selected</span>
-                    <span className="sm:hidden">
-                      Approve ({selectedPayments.size})
-                    </span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={handleBulkReject}
-                    disabled={selectedPayments.size === 0}
-                    className="flex-1 sm:flex-none text-xs sm:text-sm"
-                  >
-                    <span className="hidden sm:inline">Reject Selected</span>
-                    <span className="sm:hidden">
-                      Reject ({selectedPayments.size})
-                    </span>
-                  </Button>
+                  {user?.role === 'admin' ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={handleBulkApprove}
+                        disabled={selectedPayments.size === 0}
+                        className="flex-1 sm:flex-none text-xs sm:text-sm"
+                      >
+                        <span className="hidden sm:inline">Approve Selected</span>
+                        <span className="sm:hidden">
+                          Approve ({selectedPayments.size})
+                        </span>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={handleBulkReject}
+                        disabled={selectedPayments.size === 0}
+                        className="flex-1 sm:flex-none text-xs sm:text-sm"
+                      >
+                        <span className="hidden sm:inline">Reject Selected</span>
+                        <span className="sm:hidden">
+                          Reject ({selectedPayments.size})
+                        </span>
+                      </Button>
+                    </>
+                  ) : user?.role === 'accounts' ? (
+                    pageType === 'overdue' ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant='success'
+                          onClick={handleBulkMarkInvoiceRecieved}
+                          disabled={selectedPayments.size === 0}
+                          className="flex-1 sm:flex-none text-xs sm:text-sm"
+                        >
+                          <span className="hidden sm:inline">Mark Invoice Recieved</span>
+                          <span className="sm:hidden">
+                            Process ({selectedPayments.size})
+                          </span>
+                        </Button>
+                      </>
+                    ) : typeof onBulkAccountsVerify === 'function' ? (
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={handleBulkAccountsVerify}
+                        disabled={selectedPayments.size === 0}
+                        className="flex-1 sm:flex-none text-xs sm:text-sm"
+                      >
+                        <span className="hidden sm:inline">Verify Selected</span>
+                        <span className="sm:hidden">
+                          Process ({selectedPayments.size})
+                        </span>
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={handleBulkProcess}
+                        disabled={selectedPayments.size === 0}
+                        className="flex-1 sm:flex-none text-xs sm:text-sm"
+                      >
+                        <span className="hidden sm:inline">Process Selected</span>
+                        <span className="sm:hidden">
+                          Process ({selectedPayments.size})
+                        </span>
+                      </Button>
+                    )
+                  ) : null}
+
                 </div>
                 <Button
                   size="sm"
@@ -698,7 +852,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        {enableBulkSelection && user?.role === 'admin' && (
+                        {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
                           <th
                             scope="col"
                             className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
@@ -709,9 +863,13 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                               checked={
                                 selectedPayments.size > 0 &&
                                 selectedPayments.size ===
-                                  paginatedPayments.filter(
-                                    (p) => p.status === 'pending'
-                                  ).length
+                                paginatedPayments.filter(
+                                  (p) =>
+                                    (user?.role === 'admin' && p.status === 'pending') ||
+                                    (user?.role === 'accounts' && p.status === 'approved') ||
+                                    (user?.role === 'accounts' && p.status === 'processed') ||
+                                    (user?.role === 'accounts' && p.status === 'pending')
+                                ).length
                               }
                               onChange={(e) =>
                                 handleSelectAll(e.target.checked)
@@ -808,7 +966,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                           onClick={() => handleRowClick(payment)}
                         >
-                          {enableBulkSelection && user?.role === 'admin' && (
+                          {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
                             <td
                               className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
                               onClick={(e) => e.stopPropagation()}
@@ -818,7 +976,9 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                                 checked={selectedPayments.has(payment.id)}
                                 disabled={
-                                  payment.status !== 'pending' ||
+                                  ((user?.role === 'admin' && payment.status !== 'pending') ||
+                                    (user?.role === 'accounts' && payment.status !== 'approved' &&
+                                      payment.status !== 'processed' && payment.status !== 'pending')) ||
                                   (maxSelections > 0 &&
                                     selectedPayments.size >= maxSelections &&
                                     !selectedPayments.has(payment.id))
@@ -851,9 +1011,19 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                             {payment.vendorName}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {payment.advanceDetails
-                              .replace(/_/g, ' ')
-                              .replace(/\b\w/g, (l) => l.toUpperCase())}
+                            <div className="flex items-center gap-2">
+                              {payment.advanceDetails
+                                .replace(/_/g, ' ')
+                                .replace(/\b\w/g, (l) => l.toUpperCase())}
+                              {payment.accountsVerificationStatus === 'verified' &&
+                                !['query_raised', 'rejected'].includes(payment.status) && (
+                                  <Tooltip content="Approved by Accounts">
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-xl text-xs font-bold bg-cyan-200 text-cyan-800">
+                                      AA
+                                    </span>
+                                  </Tooltip>
+                                )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                             {payment.paymentAmount.toLocaleString('en-IN', {
@@ -863,7 +1033,14 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                             })}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            <PaymentStatusBadge status={payment.status} />
+                            <div className="flex items-center gap-2">
+                              <PaymentStatusBadge status={payment.status} />
+                              {payment.status !== 'processed' && payment.accountsQuery && (
+                                <Tooltip content={`Accounts Query: ${payment.accountsQuery}`}>
+                                  <AlertCircle className="h-5 w-5 text-amber-500" aria-label="Accounts Query Raised" />
+                                </Tooltip>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {payment.requestedBy.name}
@@ -875,7 +1052,6 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {payment.status === 'pending' &&
-                                  onApprove &&
                                   user?.role === 'admin' && (
                                     <>
                                       <Button
@@ -888,10 +1064,29 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                       >
                                         Approve
                                       </Button>
+                                      <Button
+                                        size="xs"
+                                        variant="warning"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleQuery(payment.id);
+                                        }}
+                                      >
+                                        Query
+                                      </Button>
+                                      <Button
+                                        size="xs"
+                                        variant="danger"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleReject(payment.id);
+                                        }}
+                                      >
+                                        Reject
+                                      </Button>
                                     </>
                                   )}
                                 {payment.status === 'approved' &&
-                                  onProcess &&
                                   user?.role === 'accounts' && (
                                     <>
                                       <Button
@@ -899,12 +1094,12 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                         variant="primary"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleProcess(payment.id);
+                                          handleProcess(payment.id, payment.paymentAmount);
                                         }}
                                       >
                                         Process
                                       </Button>
-                                      {onAccountsQuery && (
+                                      {!payment.accountsQuery && (
                                         <Button
                                           size="xs"
                                           variant="warning"
@@ -921,7 +1116,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                 {payment.status === 'processed' &&
                                   (payment.advanceDetails === 'advance' ||
                                     payment.advanceDetails ===
-                                      'advance_(bill/PI)') &&
+                                    'advance_(bill/PI)') &&
                                   (!payment.invoiceReceived ||
                                     payment.invoiceReceived === 'no') &&
                                   onMarkInvoiceReceived &&
@@ -936,6 +1131,32 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                     >
                                       Mark Invoice Received
                                     </Button>
+                                  )}
+                                {(user?.role === 'accounts' &&
+                                  payment.status === 'pending' &&
+                                  payment.accountsVerificationStatus === 'pending') && (
+                                    <>
+                                      <Button
+                                        size="xs"
+                                        variant="warning"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleQuery(payment.id);
+                                        }}
+                                      >
+                                        Query
+                                      </Button>
+                                      <Button
+                                        size="xs"
+                                        variant="success"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleVerify(payment.id);
+                                        }}
+                                      >
+                                        Verify
+                                      </Button>
+                                    </>
                                   )}
                               </div>
                             </td>
@@ -1007,11 +1228,10 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         <button
                           key={page}
                           onClick={() => handlePageChange(page)}
-                          className={`w-8 h-8 text-xs font-medium rounded ${
-                            page === currentPage
-                              ? 'bg-primary-600 text-white'
-                              : 'text-gray-700 hover:bg-gray-50 border border-gray-300'
-                          }`}
+                          className={`w-8 h-8 text-xs font-medium rounded ${page === currentPage
+                            ? 'bg-primary-600 text-white'
+                            : 'text-gray-700 hover:bg-gray-50 border border-gray-300'
+                            }`}
                         >
                           {page}
                         </button>
@@ -1090,11 +1310,10 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           <button
                             key={page}
                             onClick={() => handlePageChange(page)}
-                            className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
-                              page === currentPage
-                                ? 'z-10 bg-primary-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
-                                : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
-                            }`}
+                            className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${page === currentPage
+                              ? 'z-10 bg-primary-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
+                              : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
+                              }`}
                           >
                             {page}
                           </button>
@@ -1154,9 +1373,8 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
       <ProcessPaymentDialog
         isOpen={processDialog.isOpen}
         onClose={() => setProcessDialog((prev) => ({ ...prev, isOpen: false }))}
-        onSubmit={(invoiceReceived) => {
-          handleProcessSubmit(invoiceReceived);
-        }}
+        onSubmit={handleProcessSubmit}
+        currentPaymentAmount={processDialog.currentPaymentAmount}
       />
 
       <ApprovePaymentDialog
