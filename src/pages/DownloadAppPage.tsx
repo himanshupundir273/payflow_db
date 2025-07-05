@@ -4,11 +4,11 @@ import { Smartphone } from 'lucide-react';
 
 const DownloadAppPage: React.FC = () => {
   // Google Drive direct download link
-  const FILE_ID = '1wMwY9ZakgviMcchOwc9x2BitkWU2KDRV';
+  const FILE_ID = '1nFqRM6k93fnDbZEjCosr2TxnqY5ulx5J';
   const appUrl = `https://drive.google.com/uc?export=download&id=${FILE_ID}`;
   
   // Fixed date: June 17th, 2025
-  const lastUpdateDate = '17_06_2025';
+  const lastUpdateDate = '05_07_2025';
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
