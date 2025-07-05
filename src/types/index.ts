@@ -74,6 +74,7 @@ export interface PaymentRequest {
   priceCheckGuaranteedBy?: string | null;
   categoryId?: string | null;
   subcategoryId?: string | null;
+  urgencyLevel: 'low' | 'medium' | 'high';
   createdAt: string;
   updatedAt: string;
   amountChangeReason?: string;

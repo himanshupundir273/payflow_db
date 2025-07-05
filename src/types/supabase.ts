@@ -100,6 +100,7 @@ export interface Database {
           price_check_guaranteed_by: string | null
           category_id: string | null
           subcategory_id: string | null
+          urgency_level: 'low' | 'medium' | 'high'
           created_at: string
           updated_at: string
           amount_change_reason: string | null
@@ -136,6 +137,7 @@ export interface Database {
           price_check_guaranteed_by?: string | null
           category_id?: string | null
           subcategory_id?: string | null
+          urgency_level?: 'low' | 'medium' | 'high'
           created_at?: string
           updated_at?: string
           amount_change_reason?: string | null
@@ -172,6 +174,7 @@ export interface Database {
           price_check_guaranteed_by?: string | null
           category_id?: string | null
           subcategory_id?: string | null
+          urgency_level?: 'low' | 'medium' | 'high'
           created_at?: string
           updated_at?: string
           amount_change_reason?: string | null

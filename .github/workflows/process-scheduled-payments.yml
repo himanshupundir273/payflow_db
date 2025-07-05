@@ -1,0 +1,104 @@
+name: Process Scheduled Payments
+
+on:
+  schedule:
+    # Run every morning at 7:30 AM IST (2:00 AM UTC)
+    # IST is UTC+5:30, so 7:30 AM IST = 2:00 AM UTC
+    - cron: '0 2 * * *'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  process-scheduled-payments:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Process Scheduled Payments
+        id: process-payments
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "🕐 Starting scheduled payments processing at $(date)"
+          echo "🌐 Calling scheduled-payments-processor function..."
+          
+          # Call the Supabase Edge Function
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X GET \
+            "https://wqvwsjqqvqcgbrnbqepu.supabase.co/functions/v1/scheduled-payments-processor" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json")
+          
+          # Extract response body and status code
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          RESPONSE_BODY=$(echo "$RESPONSE" | head -n -1)
+          
+          echo "📊 Response Status: $HTTP_STATUS"
+          echo "📋 Response Body: $RESPONSE_BODY"
+          
+          # Check for HTTP errors first
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Error: HTTP $HTTP_STATUS"
+            echo "Error response: $RESPONSE_BODY"
+            echo "processed=0" >> $GITHUB_OUTPUT
+            echo "total_attempted=0" >> $GITHUB_OUTPUT
+            echo "failures=0" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Parse the response using jq
+          PROCESSED=$(echo "$RESPONSE_BODY" | jq -r '.processed // 0')
+          TOTAL_ATTEMPTED=$(echo "$RESPONSE_BODY" | jq -r '.total_attempted // 0')
+          FAILURES=$(echo "$RESPONSE_BODY" | jq -r '.failures | length // 0')
+          MESSAGE=$(echo "$RESPONSE_BODY" | jq -r '.message // "No message"')
+          TIMESTAMP=$(echo "$RESPONSE_BODY" | jq -r '.timestamp // "No timestamp"')
+          
+          echo "✅ Message: $MESSAGE"
+          echo "✅ Processed: $PROCESSED"
+          echo "📈 Total Attempted: $TOTAL_ATTEMPTED"
+          echo "❌ Failures: $FAILURES"
+          echo "🕐 Timestamp: $TIMESTAMP"
+          
+          # Set output variables for the summary step
+          echo "processed=$PROCESSED" >> $GITHUB_OUTPUT
+          echo "total_attempted=$TOTAL_ATTEMPTED" >> $GITHUB_OUTPUT
+          echo "failures=$FAILURES" >> $GITHUB_OUTPUT
+          echo "message=$MESSAGE" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          
+          # Check if there were any failures and show details
+          if [ "$FAILURES" -gt 0 ]; then
+            echo "⚠️ Warning: $FAILURES failures occurred"
+            echo "Failure details:"
+            echo "$RESPONSE_BODY" | jq -r '.failures[] | "  - ID: \(.id), Reason: \(.reason)"'
+          fi
+          
+          # Check if no payments were processed
+          if [ "$TOTAL_ATTEMPTED" -eq 0 ]; then
+            echo "ℹ️ No scheduled payments were due for processing"
+          else
+            echo "✅ Scheduled payments processing completed successfully"
+          fi
+
+      - name: Create Summary
+        if: always()
+        run: |
+          echo "## Scheduled Payments Processing Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Message:** ${{ steps.process-payments.outputs.message }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Processed:** ${{ steps.process-payments.outputs.processed }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Total Attempted:** ${{ steps.process-payments.outputs.total_attempted }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Failures:** ${{ steps.process-payments.outputs.failures }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** ${{ steps.process-payments.outputs.timestamp }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          
+          # Add failure details if any
+          if [ "${{ steps.process-payments.outputs.failures }}" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Failure Details" >> $GITHUB_STEP_SUMMARY
+            echo "Check the logs above for detailed failure information." >> $GITHUB_STEP_SUMMARY
+          fi 
