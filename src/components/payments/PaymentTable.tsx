@@ -12,6 +12,8 @@ import {
   ChevronRight,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  Minus,
 } from 'lucide-react';
 import Card from '../ui/Card';
 import Input from '../ui/Input';
@@ -429,7 +431,13 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
             </div>
             <div className="flex justify-between">
               <span className="font-medium">Payment Against:</span>
-              <span>{payment.advanceDetails.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}</span>
+              <div className="flex flex-col items-end max-w-[65%]">
+                <span className="font-semibold text-right leading-tight text-gray-900">
+                  {payment.advanceDetails
+                    .replace(/_/g, ' ')
+                    .replace(/\b\w/g, (l) => l.toUpperCase())}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -733,7 +741,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
 
               {/* Action Buttons */}
               <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-2">
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2">
                   {user?.role === 'admin' ? (
                     <>
                       <Button
@@ -741,7 +749,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         variant="success"
                         onClick={handleBulkApprove}
                         disabled={selectedPayments.size === 0}
-                        className="flex-1 sm:flex-none text-xs sm:text-sm"
+                        className="text-xs sm:text-sm"
                       >
                         <span className="hidden sm:inline">Approve Selected</span>
                         <span className="sm:hidden">
@@ -753,7 +761,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         variant="danger"
                         onClick={handleBulkReject}
                         disabled={selectedPayments.size === 0}
-                        className="flex-1 sm:flex-none text-xs sm:text-sm"
+                        className="text-xs sm:text-sm"
                       >
                         <span className="hidden sm:inline">Reject Selected</span>
                         <span className="sm:hidden">
@@ -769,7 +777,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           variant='success'
                           onClick={handleBulkMarkInvoiceRecieved}
                           disabled={selectedPayments.size === 0}
-                          className="flex-1 sm:flex-none text-xs sm:text-sm"
+                          className="text-xs sm:text-sm"
                         >
                           <span className="hidden sm:inline">Mark Invoice Recieved</span>
                           <span className="sm:hidden">
@@ -783,7 +791,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         variant="success"
                         onClick={handleBulkAccountsVerify}
                         disabled={selectedPayments.size === 0}
-                        className="flex-1 sm:flex-none text-xs sm:text-sm"
+                        className="text-xs sm:text-sm"
                       >
                         <span className="hidden sm:inline">Verify Selected</span>
                         <span className="sm:hidden">
@@ -796,7 +804,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         variant="primary"
                         onClick={handleBulkProcess}
                         disabled={selectedPayments.size === 0}
-                        className="flex-1 sm:flex-none text-xs sm:text-sm"
+                        className="text-xs sm:text-sm"
                       >
                         <span className="hidden sm:inline">Process Selected</span>
                         <span className="sm:hidden">
@@ -812,7 +820,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   variant="outline"
                   onClick={() => setSelectedPayments(new Set())}
                   disabled={selectedPayments.size === 0}
-                  className="w-full sm:w-auto text-xs sm:text-sm"
+                  className="text-xs sm:text-sm"
                 >
                   <span className="hidden sm:inline">Clear Selection</span>
                   <span className="sm:hidden">Clear</span>
@@ -846,326 +854,666 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto -mx-4 sm:mx-0">
-              <div className="inline-block min-w-full py-2 align-middle">
-                <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
+            {/* Mobile Card Layout */}
+            <div className="md:hidden space-y-4">
+              {/* Mobile Select All Bar */}
+              {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <input
+                        type="checkbox"
+                        className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        checked={
+                          selectedPayments.size > 0 &&
+                          selectedPayments.size ===
+                          paginatedPayments.filter(
+                            (p) =>
+                              (user?.role === 'admin' && p.status === 'pending') ||
+                              (user?.role === 'accounts' && p.status === 'approved') ||
+                              (user?.role === 'accounts' && p.status === 'processed') ||
+                              (user?.role === 'accounts' && p.status === 'pending')
+                          ).length
+                        }
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                      />
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">
+                          Select All Eligible Payments
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {selectedPayments.size} of {paginatedPayments.filter(
+                            (p) =>
+                              (user?.role === 'admin' && p.status === 'pending') ||
+                              (user?.role === 'accounts' && p.status === 'approved') ||
+                              (user?.role === 'accounts' && p.status === 'processed') ||
+                              (user?.role === 'accounts' && p.status === 'pending')
+                          ).length} selected
+                        </div>
+                      </div>
+                    </div>
+                    {maxSelections > 0 && (
+                      <div className="text-xs text-gray-500 bg-blue-100 px-2 py-1 rounded">
+                        Max {maxSelections}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {paginatedPayments.map((payment) => (
+                <div
+                  key={payment.id}
+                  className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer active:scale-[0.98]"
+                  onClick={() => handleRowClick(payment)}
+                >
+                  {/* Header with SR No and Status */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          checked={selectedPayments.has(payment.id)}
+                          disabled={
+                            ((user?.role === 'admin' && payment.status !== 'pending') ||
+                              (user?.role === 'accounts' && payment.status !== 'approved' &&
+                                payment.status !== 'processed' && payment.status !== 'pending')) ||
+                            (maxSelections > 0 &&
+                              selectedPayments.size >= maxSelections &&
+                              !selectedPayments.has(payment.id))
+                          }
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleSelectPayment(payment.id, e.target.checked);
+                          }}
+                        />
+                      )}
+                      <div>
+                        <span className="text-lg font-bold text-gray-900">
+                          #{payment.serialNumber}
+                        </span>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {format(new Date(payment.date), 'dd/MM/yyyy')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="flex flex-col items-end gap-1">
+                        <PaymentStatusBadge status={payment.status} />
+                        <Tooltip content={
+                          payment.urgencyLevel === 'high'
+                            ? 'High Priority - Requires immediate attention and processing'
+                            : payment.urgencyLevel === 'medium'
+                              ? 'Medium Priority - Standard processing timeline'
+                              : 'Low Priority - Routine processing, no urgency'
+                        }>
+                          <div
+                            className={`p-1 rounded-full ${payment.urgencyLevel === 'high'
+                                ? 'bg-red-100 text-red-800'
+                                : payment.urgencyLevel === 'medium'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}
+                          >
+                            {payment.urgencyLevel === 'high' ? (
+                              <AlertTriangle className="h-4 w-4" />
+                            ) : payment.urgencyLevel === 'medium' ? (
+                              <Minus className="h-4 w-4" />
+                            ) : (
+                              <CheckCircle2 className="h-4 w-4" />
+                            )}
+                          </div>
+                        </Tooltip>
+                      </div>
+                      {payment.status !== 'processed' && payment.accountsQuery && (
+                        <Tooltip content={`Accounts Query: ${payment.accountsQuery}`}>
+                          <AlertCircle className="h-5 w-5 text-amber-500" aria-label="Accounts Query Raised" />
+                        </Tooltip>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Amount - Prominent Display */}
+                  <div className="mb-2 p-1 bg-gray-50 rounded-lg">
+                    <div className="text-center">
+                      <div className="text-xs text-gray-500 mb-1">Payment Amount</div>
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="text-2xl font-bold text-gray-900">
+                          {payment.paymentAmount.toLocaleString('en-IN', {
+                            style: 'currency',
+                            currency: 'INR',
+                            maximumFractionDigits: 0,
+                          })}
+                        </div>
+                        {payment.accountsVerificationStatus === 'verified' &&
+                          !['query_raised', 'rejected'].includes(payment.status) && (
+                            <Tooltip content="Approved by Accounts">
+                              <span className="inline-flex items-center px-2 py-1 rounded-xl text-xs font-bold bg-cyan-200 text-cyan-800 flex-shrink-0">
+                                AA
+                              </span>
+                            </Tooltip>
+                          )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Payment Details */}
+                  <div className="space-y-3 text-sm">
+                    <div className="flex justify-between items-start">
+                      <span className="text-gray-500 font-medium">Company:</span>
+                      <span className="font-semibold text-right max-w-[65%] leading-tight">
+                        {payment.companyName},
+                        <span className="text-gray-600">{payment.companyBranch}</span>
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-start">
+                      <span className="text-gray-500 font-medium">Vendor:</span>
+                      <span className="font-semibold text-right max-w-[65%] leading-tight">
+                        {payment.vendorName}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-start">
+                      <span className="text-gray-500 font-medium">Payment Against:</span>
+                      <div className="flex flex-col items-end max-w-[65%]">
+                        <span className="font-semibold text-right leading-tight text-gray-900">
+                          {payment.advanceDetails
+                            .replace(/_/g, ' ')
+                            .replace(/\b\w/g, (l) => l.toUpperCase())}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-start">
+                      <span className="text-gray-500 font-medium">Requested By:</span>
+                      <span className="font-semibold text-right max-w-[65%] leading-tight">
+                        {payment.requestedBy.name}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  {showActions && (
+                    <div className="mt-5 pt-4 border-t border-gray-200">
+                      <div
+                        className="flex flex-wrap gap-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {payment.status === 'pending' &&
+                          user?.role === 'admin' && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="success"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleApprove(payment.id, payment.paymentAmount);
+                                }}
+                                className="flex-1 min-w-[80px]"
+                              >
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="warning"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleQuery(payment.id);
+                                }}
+                                className="flex-1 min-w-[80px]"
+                              >
+                                Query
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleReject(payment.id);
+                                }}
+                                className="flex-1 min-w-[80px]"
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                        {payment.status === 'approved' &&
+                          user?.role === 'accounts' && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleProcess(payment.id, payment.paymentAmount);
+                                }}
+                                className="flex-1 min-w-[80px]"
+                              >
+                                Process
+                              </Button>
+                              {!payment.accountsQuery && (
+                                <Button
+                                  size="sm"
+                                  variant="warning"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAccountsQuery(payment.id);
+                                  }}
+                                  className="flex-1 min-w-[80px]"
+                                >
+                                  Query
+                                </Button>
+                              )}
+                            </>
+                          )}
+                        {payment.status === 'processed' &&
+                          (payment.advanceDetails === 'advance' ||
+                            payment.advanceDetails ===
+                            'advance_(bill/PI)') &&
+                          (!payment.invoiceReceived ||
+                            payment.invoiceReceived === 'no') &&
+                          onMarkInvoiceReceived &&
+                          user?.role === 'accounts' && (
+                            <Button
+                              size="sm"
+                              variant="success"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMarkInvoiceReceived(payment.id);
+                              }}
+                              className="flex-1 min-w-[80px]"
+                            >
+                              Mark Invoice Received
+                            </Button>
+                          )}
+                        {(user?.role === 'accounts' &&
+                          payment.status === 'pending' &&
+                          payment.accountsVerificationStatus === 'pending') && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="warning"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleQuery(payment.id);
+                                }}
+                                className="flex-1 min-w-[80px]"
+                              >
+                                Query
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="success"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleVerify(payment.id);
+                                }}
+                                className="flex-1 min-w-[80px]"
+                              >
+                                Verify
+                              </Button>
+                            </>
+                          )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table Layout */}
+            <div className="hidden md:block w-full overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
+                        <th
+                          scope="col"
+                          className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            checked={
+                              selectedPayments.size > 0 &&
+                              selectedPayments.size ===
+                              paginatedPayments.filter(
+                                (p) =>
+                                  (user?.role === 'admin' && p.status === 'pending') ||
+                                  (user?.role === 'accounts' && p.status === 'approved') ||
+                                  (user?.role === 'accounts' && p.status === 'processed') ||
+                                  (user?.role === 'accounts' && p.status === 'pending')
+                              ).length
+                            }
+                            onChange={(e) =>
+                              handleSelectAll(e.target.checked)
+                            }
+                          />
+                        </th>
+                      )}
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort('serialNumber')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>SR No.</span>
+                          {getSortIcon('serialNumber')}
+                        </div>
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort('date')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Date</span>
+                          {getSortIcon('date')}
+                        </div>
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort('companyName')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Company/Branch</span>
+                          {getSortIcon('companyName')}
+                        </div>
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Vendor
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort('advanceDetails')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>PAY AGAINST</span>
+                          {getSortIcon('advanceDetails')}
+                        </div>
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort('paymentAmount')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Amount</span>
+                          {getSortIcon('paymentAmount')}
+                        </div>
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
+                        onClick={() => handleSort('status')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Status</span>
+                          {getSortIcon('status')}
+                        </div>
+                      </th>
+                      <th
+                        scope="col"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                      >
+                        Requested By
+                      </th>
+                      {showActions && (
+                        <th
+                          scope="col"
+                          className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Actions
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {paginatedPayments.map((payment) => (
+                      <tr
+                        key={payment.id}
+                        className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
+                        onClick={() => handleRowClick(payment)}
+                      >
                         {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
-                          <th
-                            scope="col"
-                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          <td
+                            className="px-3 py-4 text-sm font-medium text-gray-900"
+                            onClick={(e) => e.stopPropagation()}
                           >
                             <input
                               type="checkbox"
                               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              checked={
-                                selectedPayments.size > 0 &&
-                                selectedPayments.size ===
-                                paginatedPayments.filter(
-                                  (p) =>
-                                    (user?.role === 'admin' && p.status === 'pending') ||
-                                    (user?.role === 'accounts' && p.status === 'approved') ||
-                                    (user?.role === 'accounts' && p.status === 'processed') ||
-                                    (user?.role === 'accounts' && p.status === 'pending')
-                                ).length
+                              checked={selectedPayments.has(payment.id)}
+                              disabled={
+                                ((user?.role === 'admin' && payment.status !== 'pending') ||
+                                  (user?.role === 'accounts' && payment.status !== 'approved' &&
+                                    payment.status !== 'processed' && payment.status !== 'pending')) ||
+                                (maxSelections > 0 &&
+                                  selectedPayments.size >= maxSelections &&
+                                  !selectedPayments.has(payment.id))
                               }
-                              onChange={(e) =>
-                                handleSelectAll(e.target.checked)
-                              }
-                            />
-                          </th>
-                        )}
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                          onClick={() => handleSort('serialNumber')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>SR No.</span>
-                            {getSortIcon('serialNumber')}
-                          </div>
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                          onClick={() => handleSort('date')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Date</span>
-                            {getSortIcon('date')}
-                          </div>
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                          onClick={() => handleSort('companyName')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Company/Branch</span>
-                            {getSortIcon('companyName')}
-                          </div>
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          Vendor
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer whitespace-nowrap"
-                          onClick={() => handleSort('advanceDetails')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>PAY AGAINST</span>
-                            {getSortIcon('advanceDetails')}
-                          </div>
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                          onClick={() => handleSort('paymentAmount')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Amount</span>
-                            {getSortIcon('paymentAmount')}
-                          </div>
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                          onClick={() => handleSort('status')}
-                        >
-                          <div className="flex items-center space-x-1">
-                            <span>Status</span>
-                            {getSortIcon('status')}
-                          </div>
-                        </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          Requested By
-                        </th>
-                        {showActions && (
-                          <th
-                            scope="col"
-                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                          >
-                            Actions
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {paginatedPayments.map((payment) => (
-                        <tr
-                          key={payment.id}
-                          className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
-                          onClick={() => handleRowClick(payment)}
-                        >
-                          {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
-                            <td
-                              className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"
                               onClick={(e) => e.stopPropagation()}
-                            >
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                                checked={selectedPayments.has(payment.id)}
-                                disabled={
-                                  ((user?.role === 'admin' && payment.status !== 'pending') ||
-                                    (user?.role === 'accounts' && payment.status !== 'approved' &&
-                                      payment.status !== 'processed' && payment.status !== 'pending')) ||
-                                  (maxSelections > 0 &&
-                                    selectedPayments.size >= maxSelections &&
-                                    !selectedPayments.has(payment.id))
-                                }
-                                onClick={(e) => e.stopPropagation()}
-                                onChange={(e) => {
-                                  e.stopPropagation();
-                                  handleSelectPayment(
-                                    payment.id,
-                                    e.target.checked
-                                  );
-                                }}
-                              />
-                            </td>
-                          )}
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {payment.serialNumber}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                handleSelectPayment(
+                                  payment.id,
+                                  e.target.checked
+                                );
+                              }}
+                            />
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {format(new Date(payment.date), 'dd/MM/yyyy')}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                            <div>
-                              <div className="font-medium">
-                                {payment.companyName}, {payment.companyBranch}
-                              </div>
+                        )}
+                        <td className="px-3 py-4 text-sm font-medium text-gray-900">
+                          {payment.serialNumber}
+                        </td>
+                        <td className="px-3 py-4 text-sm text-gray-500">
+                          {format(new Date(payment.date), 'dd/MM/yyyy')}
+                        </td>
+                        <td className="px-3 py-4 text-sm text-gray-600">
+                          <div className="max-w-xs flex gap-1">
+                            <div className="font-medium truncate flex items-center gap-2">
+                              {payment.companyName}, {payment.companyBranch}
+
                             </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <Tooltip content={
+                              payment.urgencyLevel === 'high'
+                                ? 'High Priority - Requires immediate attention and processing'
+                                : payment.urgencyLevel === 'medium'
+                                  ? 'Medium Priority - Standard processing timeline'
+                                  : 'Low Priority - Routine processing, no urgency'
+                            }>
+                              <div
+                                className={`p-1 rounded-full flex-shrink-0 ${payment.urgencyLevel === 'high'
+                                    ? 'bg-red-100 text-red-800'
+                                    : payment.urgencyLevel === 'medium'
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-green-100 text-green-800'
+                                  }`}
+                              >
+                                {payment.urgencyLevel === 'high' ? (
+                                  <AlertTriangle className="h-4 w-4" />
+                                ) : payment.urgencyLevel === 'medium' ? (
+                                  <Minus className="h-4 w-4" />
+                                ) : (
+                                  <CheckCircle2 className="h-4 w-4" />
+                                )}
+                              </div>
+                            </Tooltip>
+                          </div>
+                        </td>
+                        <td className="px-3 py-4 text-sm text-gray-900">
+                          <div className="max-w-xs truncate">
                             {payment.vendorName}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            <div className="flex items-center gap-2">
+                          </div>
+                        </td>
+                        <td className="px-3 py-4 text-sm text-gray-900">
+                          <div className="flex items-center gap-2 max-w-xs">
+                            <span className="truncate">
                               {payment.advanceDetails
                                 .replace(/_/g, ' ')
                                 .replace(/\b\w/g, (l) => l.toUpperCase())}
-                              {payment.accountsVerificationStatus === 'verified' &&
-                                !['query_raised', 'rejected'].includes(payment.status) && (
-                                  <Tooltip content="Approved by Accounts">
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-xl text-xs font-bold bg-cyan-200 text-cyan-800">
-                                      AA
-                                    </span>
-                                  </Tooltip>
-                                )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {payment.paymentAmount.toLocaleString('en-IN', {
-                              style: 'currency',
-                              currency: 'INR',
-                              maximumFractionDigits: 0,
-                            })}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            <div className="flex items-center gap-2">
-                              <PaymentStatusBadge status={payment.status} />
-                              {payment.status !== 'processed' && payment.accountsQuery && (
-                                <Tooltip content={`Accounts Query: ${payment.accountsQuery}`}>
-                                  <AlertCircle className="h-5 w-5 text-amber-500" aria-label="Accounts Query Raised" />
+                            </span>
+                            {payment.accountsVerificationStatus === 'verified' &&
+                              !['query_raised', 'rejected'].includes(payment.status) && (
+                                <Tooltip content="Approved by Accounts">
+                                  <span className="inline-flex items-center px-2 py-1 rounded-xl text-xs font-bold bg-cyan-200 text-cyan-800 flex-shrink-0">
+                                    AA
+                                  </span>
                                 </Tooltip>
                               )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          </div>
+                        </td>
+                        <td className="px-3 py-4 text-sm text-gray-900">
+                          {payment.paymentAmount.toLocaleString('en-IN', {
+                            style: 'currency',
+                            currency: 'INR',
+                            maximumFractionDigits: 0,
+                          })}
+                        </td>
+                        <td className="px-3 py-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <PaymentStatusBadge status={payment.status} />
+                            {payment.status !== 'processed' && payment.accountsQuery && (
+                              <Tooltip content={`Accounts Query: ${payment.accountsQuery}`}>
+                                <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0" aria-label="Accounts Query Raised" />
+                              </Tooltip>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-4 text-sm text-gray-500">
+                          <div className="max-w-xs truncate">
                             {payment.requestedBy.name}
-                          </td>
-                          {showActions && (
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              <div
-                                className="flex space-x-2"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                {payment.status === 'pending' &&
-                                  user?.role === 'admin' && (
-                                    <>
-                                      <Button
-                                        size="xs"
-                                        variant="success"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleApprove(payment.id, payment.paymentAmount);
-                                        }}
-                                      >
-                                        Approve
-                                      </Button>
-                                      <Button
-                                        size="xs"
-                                        variant="warning"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleQuery(payment.id);
-                                        }}
-                                      >
-                                        Query
-                                      </Button>
-                                      <Button
-                                        size="xs"
-                                        variant="danger"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleReject(payment.id);
-                                        }}
-                                      >
-                                        Reject
-                                      </Button>
-                                    </>
-                                  )}
-                                {payment.status === 'approved' &&
-                                  user?.role === 'accounts' && (
-                                    <>
-                                      <Button
-                                        size="xs"
-                                        variant="primary"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleProcess(payment.id, payment.paymentAmount);
-                                        }}
-                                      >
-                                        Process
-                                      </Button>
-                                      {!payment.accountsQuery && (
-                                        <Button
-                                          size="xs"
-                                          variant="warning"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleAccountsQuery(payment.id);
-                                          }}
-                                        >
-                                          Query
-                                        </Button>
-                                      )}
-                                    </>
-                                  )}
-                                {payment.status === 'processed' &&
-                                  (payment.advanceDetails === 'advance' ||
-                                    payment.advanceDetails ===
-                                    'advance_(bill/PI)') &&
-                                  (!payment.invoiceReceived ||
-                                    payment.invoiceReceived === 'no') &&
-                                  onMarkInvoiceReceived &&
-                                  user?.role === 'accounts' && (
+                          </div>
+                        </td>
+                        {showActions && (
+                          <td className="px-3 py-4 text-sm text-gray-500">
+                            <div
+                              className="flex items-center gap-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {payment.status === 'pending' &&
+                                user?.role === 'admin' && (
+                                  <>
                                     <Button
                                       size="xs"
                                       variant="success"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleMarkInvoiceReceived(payment.id);
+                                        handleApprove(payment.id, payment.paymentAmount);
                                       }}
                                     >
-                                      Mark Invoice Received
+                                      Approve
                                     </Button>
-                                  )}
-                                {(user?.role === 'accounts' &&
-                                  payment.status === 'pending' &&
-                                  payment.accountsVerificationStatus === 'pending') && (
-                                    <>
+                                    <Button
+                                      size="xs"
+                                      variant="warning"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleQuery(payment.id);
+                                      }}
+                                    >
+                                      Query
+                                    </Button>
+                                    <Button
+                                      size="xs"
+                                      variant="danger"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleReject(payment.id);
+                                      }}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
+                              {payment.status === 'approved' &&
+                                user?.role === 'accounts' && (
+                                  <>
+                                    <Button
+                                      size="xs"
+                                      variant="primary"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleProcess(payment.id, payment.paymentAmount);
+                                      }}
+                                    >
+                                      Process
+                                    </Button>
+                                    {!payment.accountsQuery && (
                                       <Button
                                         size="xs"
                                         variant="warning"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleQuery(payment.id);
+                                          handleAccountsQuery(payment.id);
                                         }}
                                       >
                                         Query
                                       </Button>
-                                      <Button
-                                        size="xs"
-                                        variant="success"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleVerify(payment.id);
-                                        }}
-                                      >
-                                        Verify
-                                      </Button>
-                                    </>
-                                  )}
-                              </div>
-                            </td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                                    )}
+                                  </>
+                                )}
+                              {payment.status === 'processed' &&
+                                (payment.advanceDetails === 'advance' ||
+                                  payment.advanceDetails ===
+                                  'advance_(bill/PI)') &&
+                                (!payment.invoiceReceived ||
+                                  payment.invoiceReceived === 'no') &&
+                                onMarkInvoiceReceived &&
+                                user?.role === 'accounts' && (
+                                  <Button
+                                    size="xs"
+                                    variant="success"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMarkInvoiceReceived(payment.id);
+                                    }}
+                                  >
+                                    Mark Invoice Received
+                                  </Button>
+                                )}
+                              {(user?.role === 'accounts' &&
+                                payment.status === 'pending' &&
+                                payment.accountsVerificationStatus === 'pending') && (
+                                  <>
+                                    <Button
+                                      size="xs"
+                                      variant="warning"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleQuery(payment.id);
+                                      }}
+                                    >
+                                      Query
+                                    </Button>
+                                    <Button
+                                      size="xs"
+                                      variant="success"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleVerify(payment.id);
+                                      }}
+                                    >
+                                      Verify
+                                    </Button>
+                                  </>
+                                )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -1179,12 +1527,13 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                     size="sm"
                     onClick={() => handlePageChange(currentPage - 1)}
                     disabled={currentPage === 1}
+                    className="px-4 py-2 text-sm font-medium"
                   >
                     Previous
                   </Button>
 
                   {/* Mobile Page Numbers */}
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center space-x-2">
                     {Array.from(
                       { length: displayTotalPages },
                       (_, i) => i + 1
@@ -1202,7 +1551,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           return (
                             <span
                               key={page}
-                              className="px-1 text-xs text-gray-500"
+                              className="px-2 text-sm text-gray-500"
                             >
                               ...
                             </span>
@@ -1215,7 +1564,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           return (
                             <span
                               key={page}
-                              className="px-1 text-xs text-gray-500"
+                              className="px-2 text-sm text-gray-500"
                             >
                               ...
                             </span>
@@ -1228,9 +1577,9 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         <button
                           key={page}
                           onClick={() => handlePageChange(page)}
-                          className={`w-8 h-8 text-xs font-medium rounded ${page === currentPage
-                            ? 'bg-primary-600 text-white'
-                            : 'text-gray-700 hover:bg-gray-50 border border-gray-300'
+                          className={`w-10 h-10 text-sm font-medium rounded-lg transition-colors ${page === currentPage
+                              ? 'bg-primary-600 text-white shadow-md'
+                              : 'text-gray-700 hover:bg-gray-100 border border-gray-300'
                             }`}
                         >
                           {page}
@@ -1244,6 +1593,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                     size="sm"
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === displayTotalPages}
+                    className="px-4 py-2 text-sm font-medium"
                   >
                     Next
                   </Button>
@@ -1251,8 +1601,8 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
 
                 {/* Desktop Pagination - Full pagination with page numbers */}
                 <div className="hidden md:flex md:flex-1 md:items-center md:justify-between">
-                  <div>
-                    <p className="text-sm text-gray-700">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-gray-700 truncate">
                       Showing{' '}
                       <span className="font-medium">
                         {displayStartIndex + 1}
@@ -1263,7 +1613,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                       results
                     </p>
                   </div>
-                  <div>
+                  <div className="flex-shrink-0">
                     <nav
                       className="isolate inline-flex -space-x-px rounded-md shadow-sm"
                       aria-label="Pagination"

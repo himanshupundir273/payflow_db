@@ -65,6 +65,7 @@ interface FormValues {
   subcategoryId: string | null; // Subcategory ID
   categoryName: string;
   subcategoryName: string;
+  urgencyLevel: 'low' | 'medium' | 'high';
 }
 
 interface PaymentRequestFormProps {
@@ -185,6 +186,9 @@ const validationSchema = Yup.object().shape({
   priceCheckGuaranteedBy: Yup.string().required('Price check guaranteed by is required'),
   categoryId: Yup.string().nullable().required('Category is required'),
   subcategoryId: Yup.string().nullable().required('Subcategory is required'),
+  urgencyLevel: Yup.string()
+    .required('Urgency level is required')
+    .oneOf(['low', 'medium', 'high'], 'Please select a valid urgency level'),
 });
 
 const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
@@ -269,6 +273,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
         const { data, error } = await supabase
           .from('users')
           .select('*')
+          .not('role', 'eq', 'accounts')
           .order('name', { ascending: true });
 
         if (error) {
@@ -377,9 +382,9 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
     subcategoryId: editingPaymentData ? JSON.parse(editingPaymentData).subcategoryId : null,
     categoryName: editingPaymentData ? JSON.parse(editingPaymentData).categoryName : '',
     subcategoryName: editingPaymentData ? JSON.parse(editingPaymentData).subcategoryName : '',
+    urgencyLevel: editingPaymentData ? JSON.parse(editingPaymentData).urgencyLevel : 'normal',
   };
 
-  console.log(initialValues);
 
   const handleSubmit = async (
     values: FormValues,
@@ -449,9 +454,10 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
         priceCheckGuaranteedBy: values.priceCheckGuaranteedBy,
         categoryId: values.categoryId,
         subcategoryId: values.subcategoryId,
+        urgencyLevel: values.urgencyLevel,
       };
 
-     
+
 
       if (editingPaymentId) {
         // Update existing payment
@@ -470,22 +476,22 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
           date: new Date().toISOString(),
           requestedBy: user,
         });
-        
+
         if (!addResult) {
           throw new Error('Failed to create payment');
         }
-        
+
         showSuccessToast('Payment request submitted');
         navigate('/payments');
       }
     } catch (error) {
       console.error('Error submitting payment request:', error);
       showErrorToast(
-        error instanceof Error 
-          ? error.message 
+        error instanceof Error
+          ? error.message
           : (editingPaymentId
-              ? 'Failed to update payment'
-              : 'Failed to submit payment request')
+            ? 'Failed to update payment'
+            : 'Failed to submit payment request')
       );
     } finally {
       setSubmitting(false);
@@ -582,7 +588,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
     const fetchOptions = async () => {
       try {
         setIsLoading(true);
-        
+
         // Fetch companies
         const { data: companiesData, error: companiesError } = await supabase
           .from('companies')
@@ -1053,8 +1059,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                       <Field
                         as="select"
                         name="companyName"
-                        className={`block w-full rounded-md border ${
-                          touched.companyName && errors.companyName
+                        className={`block w-full rounded-md border ${touched.companyName && errors.companyName
                           ? 'border-error-300'
                           : 'border-gray-300'
                           } shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 bg-white`}
@@ -1081,8 +1086,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                       <Field
                         as="select"
                         name="companyBranch"
-                        className={`block w-full rounded-md border ${
-                          touched.companyBranch && errors.companyBranch
+                        className={`block w-full rounded-md border ${touched.companyBranch && errors.companyBranch
                           ? 'border-error-300'
                           : 'border-gray-300'
                           } shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 bg-white`}
@@ -1223,7 +1227,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                       )}
                     </div>
 
-      
+
                     <div className="flex flex-col relative">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Sub-category <span className="text-error-500">*</span>
@@ -1435,6 +1439,29 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                       {touched.paymentMode && errors.paymentMode && (
                         <p className="mt-1 text-sm text-error-600">
                           {errors.paymentMode as string}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Urgency Level <span className="text-error-500">*</span>
+                      </label>
+                      <Field
+                        as="select"
+                        name="urgencyLevel"
+                        className={`block w-full rounded-md border ${touched.urgencyLevel && errors.urgencyLevel
+                          ? 'border-error-300'
+                          : 'border-gray-300'
+                          } shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 bg-white`}
+                      >
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                        <option value="high">High</option>
+                      </Field>
+                      {touched.urgencyLevel && errors.urgencyLevel && (
+                        <p className="mt-1 text-sm text-error-600">
+                          {errors.urgencyLevel as string}
                         </p>
                       )}
                     </div>
@@ -1905,7 +1932,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                   <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3">
                     <Button
                       type="button"
-                      variant="outline"
+                      variant="danger"
                       onClick={() => {
                         if (location.pathname.includes('/new')) {
                           navigate('/dashboard');
@@ -1917,7 +1944,6 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                     >
                       Cancel
                     </Button>
-
                     <Button
                       type="submit"
                       isLoading={isSubmitting || isUploading}
@@ -1925,6 +1951,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                     >
                       {isQueryPayment ? 'Update Payment' : 'Submit Request'}
                     </Button>
+
                   </div>
                 </Form>
 

@@ -1,6 +1,6 @@
-import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { ProtectedRoute } from './ProtectedRoute.tsx';
+import { ProtectedRoute } from './ProtectedRoute';
+import { useAuthStore } from '../store/authStore';
 
 // Pages
 import LoginPage from '../pages/LoginPage';
@@ -12,7 +12,6 @@ import NewPaymentPage from '../pages/NewPaymentPage';
 import PaymentDetailPage from '../pages/PaymentDetailPage';
 import EditPaymentPage from '../pages/EditPaymentPage';
 import FileViewerPage from '../pages/FileViewerPage';
-import VerificationPage from '../pages/VerificationsPage';
 import DownloadAppPage from '../pages/DownloadAppPage';
 
 // Dashboard Pages
@@ -20,6 +19,7 @@ import TotalRequestsPage from '../pages/dashboard/TotalRequestsPage';
 import PendingApprovalPage from '../pages/dashboard/PendingApprovalPage';
 import ApprovedPage from '../pages/dashboard/ApprovedPage';
 import TotalActivityPage from '../pages/dashboard/TotalActivityPage';
+import VerificationPage from '../pages/dashboard/VerificationsPage';
 
 // CMS Pages
 import Home from '../pages/cms/home';
@@ -31,12 +31,54 @@ import CompaniesPage from '../pages/cms/companies';
 import BranchesPage from '../pages/cms/branches';
 import QueriesPage from '../pages/dashboard/QueriesPage.tsx';
 import PendingProcessingPage from '../pages/dashboard/PendingProcessingPage.tsx';
+import ScheduledPaymentsPage from '../pages/scheduled-payments/home';
+import NewScheduledPaymentPage from '../pages/scheduled-payments/new.tsx';
+import ScheduledPaymentDetailsPage from '../pages/scheduled-payments/details';
+import ScheduledPaymentExecutionsPage from '../pages/scheduled-payments/executions';
 
 export const AppRoutes = () => {
+  const { user } = useAuthStore();
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/download-app" element={<DownloadAppPage />} />
+
+      <Route
+        path="/scheduled-payments"
+        element={
+          <ProtectedRoute>
+            <ScheduledPaymentsPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/scheduled-payments/new"
+        element={
+          <ProtectedRoute>
+            <NewScheduledPaymentPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/scheduled-payments/:id"
+        element={
+          <ProtectedRoute>
+            <ScheduledPaymentDetailsPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/scheduled-payments/:id/executions"
+        element={
+          <ProtectedRoute>
+            <ScheduledPaymentExecutionsPage />
+          </ProtectedRoute>
+        }
+      />
 
       <Route
         path="/dashboard"

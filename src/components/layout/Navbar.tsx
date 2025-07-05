@@ -12,6 +12,7 @@ import {
   Lock,
   LayoutDashboard,
   Download,
+  Calendar,
 } from 'lucide-react';
 import Button from '../ui/Button';
 import ChangePasswordDialog from '../auth/ChangePasswordDialog';
@@ -93,6 +94,16 @@ const Navbar: React.FC = () => {
                   >
                     Dashboard
                   </Link>
+
+                  {user.role === 'user' && (
+                    <Link
+                      to="/scheduled-payments"
+                      className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md flex items-center"
+                    >
+                      <Calendar className="h-4 w-4 mr-1" />
+                      Scheduled Payments
+                    </Link>
+                  )}
 
                   {user.role === 'accounts' && (
                     <Link
@@ -238,6 +249,16 @@ const Navbar: React.FC = () => {
                     onClick={() => setIsMenuOpen(false)}
                   >
                     CMS
+                  </Link>
+                )}
+                {user.role === 'user' && (
+                  <Link
+                    to="/scheduled-payments"
+                    className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md flex items-center"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Scheduled Payments
                   </Link>
                 )}
                 <button

@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   QuoteIcon,
+  Clock,
 } from 'lucide-react';
 import PaymentStatusBadge from '../components/payments/PaymentStatusBadge';
 import QueryDialog from '../components/payments/QueryDialog';
@@ -748,7 +749,7 @@ const PaymentDetailPage: React.FC = () => {
 
         <Card className="animate-fade-in">
           <div className="pt-0 px-1 pb-1 sm:pt-0 sm:px-1.5 sm:pb-1.5">
-            <div className="mb-6 border-b border-gray-100 pb-4">
+            <div className="mb-4 border-b border-gray-100 pb-1">
               <div className="flex items-center space-x-3 mb-2">
                 <div className="flex-shrink-0">
                   <div className="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center">
@@ -756,12 +757,30 @@ const PaymentDetailPage: React.FC = () => {
                   </div>
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 leading-tight break-words">
-                    {payment.vendorName || 'Vendor Name Not Provided'}
-                    {payment.vendorId && vendorDetails?.isApproved && (
-                      <CheckCircle2 className="inline-block h-6 w-6 text-success-600 ml-2" />
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 leading-tight break-words">
+                        {payment.vendorName || 'Vendor Name Not Provided'}
+                      </h2>
+                      {payment.vendorId && vendorDetails?.isApproved && (
+                        <CheckCircle2 className="h-6 w-6 text-success-600" />
+                      )}
+                    </div>
+                    {payment.urgencyLevel && (
+                      <div className={`hidden sm:inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium shadow-sm ${
+                        payment.urgencyLevel === 'high' 
+                          ? 'bg-red-600 text-white' 
+                          : payment.urgencyLevel === 'medium' 
+                          ? 'bg-amber-500 text-white' 
+                          : 'bg-emerald-600 text-white'
+                      }`}>
+                        <Clock className="h-3 w-3 mr-1" />
+                        {payment.urgencyLevel === 'high' ? 'High Priority' : 
+                         payment.urgencyLevel === 'medium' ? 'Medium Priority' : 
+                         'Low Priority'}
+                      </div>
                     )}
-                  </h2>
+                  </div>
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-0 space-y-2 sm:space-y-0">
                     <div className="flex flex-col sm:flex-row items-start gap-2">
                       <PaymentStatusBadge status={payment.status} />
@@ -769,6 +788,20 @@ const PaymentDetailPage: React.FC = () => {
                         !['query_raised', 'rejected'].includes(payment.status)) && (
                           <PaymentStatusBadge status="accounts_approved" />
                         )}
+                      {payment.urgencyLevel && (
+                        <div className={`sm:hidden inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium shadow-sm ${
+                          payment.urgencyLevel === 'high' 
+                            ? 'bg-red-600 text-white' 
+                            : payment.urgencyLevel === 'medium' 
+                            ? 'bg-amber-500 text-white' 
+                            : 'bg-emerald-600 text-white'
+                        }`}>
+                          <Clock className="h-3 w-3 mr-1" />
+                          {payment.urgencyLevel === 'high' ? 'High Priority' : 
+                           payment.urgencyLevel === 'medium' ? 'Medium Priority' : 
+                           'Low Priority'}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center space-x-2">
                       <span className="text-sm text-gray-500">
@@ -919,6 +952,7 @@ const PaymentDetailPage: React.FC = () => {
                       {payment.paymentMode?.replace('_', ' ') || 'Net Banking'}
                     </span>
                   </div>
+
                   {/* Optional fields - only show if they have values */}
                   {payment.lpr && (
                     <div className="flex flex-col sm:flex-row justify-between">

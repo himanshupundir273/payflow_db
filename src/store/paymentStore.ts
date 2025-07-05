@@ -141,6 +141,7 @@ const transformSinglePayment = async (row: PaymentRow): Promise<PaymentRequest> 
     priceCheckGuaranteedBy: row.price_check_guaranteed_by || undefined,
     categoryId: row.category_id || undefined,
     subcategoryId: row.subcategory_id || undefined,
+    urgencyLevel: row.urgency_level || 'normal',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     amountChangeReason: row.amount_change_reason || undefined,
@@ -492,6 +493,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               priceCheckGuaranteedBy: row.price_check_guaranteed_by || undefined,
               categoryId: row.category_id || undefined,
               subcategoryId: row.subcategory_id || undefined,
+              urgencyLevel: row.urgency_level || 'normal',
               createdAt: row.created_at,
               updatedAt: row.updated_at,
               amountChangeReason: row.amount_change_reason || undefined,
@@ -670,7 +672,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           purchase_owner: paymentData.purchaseOwner,
           price_check_guaranteed_by: paymentData.priceCheckGuaranteedBy,
           category_id: paymentData.categoryId,
-          subcategory_id: paymentData.subcategoryId
+          subcategory_id: paymentData.subcategoryId,
+          urgency_level: paymentData.urgencyLevel
         };
 
         const { data: payment, error: paymentError } = await supabase
@@ -1252,6 +1255,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             price_check_guaranteed_by: paymentData.priceCheckGuaranteedBy,
             category_id: paymentData.categoryId,
             subcategory_id: paymentData.subcategoryId,
+            ...(paymentData.urgencyLevel && { urgency_level: paymentData.urgencyLevel }),
             updated_at: new Date().toISOString()
           })
           .eq('id', id);
@@ -1648,6 +1652,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               priceCheckGuaranteedBy: row.price_check_guaranteed_by || undefined,
               categoryId: row.category_id || undefined,
               subcategoryId: row.subcategory_id || undefined,
+              urgencyLevel: row.urgency_level || 'normal',
               createdAt: row.created_at,
               updatedAt: row.updated_at
             };

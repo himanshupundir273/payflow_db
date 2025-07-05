@@ -1,0 +1,78 @@
+name: Process Recurring Payments
+
+on:
+  schedule:
+    # Run every morning at 8:30 AM IST (3:00 AM UTC)
+    # IST is UTC+5:30, so 8:30 AM IST = 3:00 AM UTC
+    - cron: '0 3 * * *'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  process-recurring-payments:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Process Recurring Payments
+        id: process-recurring
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "🕐 Starting recurring payments processing at $(date)"
+          
+          # Call the Supabase Edge Function
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X GET \
+            "https://wqvwsjqqvqcgbrnbqepu.supabase.co/functions/v1/recurring-payment-processor" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json")
+          
+          # Extract response body and status code
+          HTTP_STATUS=$(echo "$RESPONSE" | tail -n1)
+          RESPONSE_BODY=$(echo "$RESPONSE" | head -n -1)
+          
+          echo "📊 Response Status: $HTTP_STATUS"
+          echo "📋 Response Body: $RESPONSE_BODY"
+          
+          # Parse the response
+          PROCESSED=$(echo "$RESPONSE_BODY" | jq -r '.processed // 0')
+          TOTAL_ATTEMPTED=$(echo "$RESPONSE_BODY" | jq -r '.total_attempted // 0')
+          FAILURES=$(echo "$RESPONSE_BODY" | jq -r '.failures | length // 0')
+          MESSAGE=$(echo "$RESPONSE_BODY" | jq -r '.message // "No message"')
+          TIMESTAMP=$(echo "$RESPONSE_BODY" | jq -r '.timestamp // "No timestamp"')
+          
+          echo "✅ Message: $MESSAGE"
+          echo "✅ Processed: $PROCESSED"
+          echo "📈 Total Attempted: $TOTAL_ATTEMPTED"
+          echo "❌ Failures: $FAILURES"
+          echo "🕐 Timestamp: $TIMESTAMP"
+          
+          # Check for errors
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Error: HTTP $HTTP_STATUS"
+            echo "Error response: $RESPONSE_BODY"
+            exit 1
+          fi
+          
+          # Check if there were any failures
+          if [ "$FAILURES" -gt 0 ]; then
+            echo "⚠️ Warning: $FAILURES failures occurred"
+            echo "Failure details:"
+            echo "$RESPONSE_BODY" | jq -r '.failures[] | "  - ID: \(.id), Reason: \(.reason)"'
+          fi
+          
+          if [ "$TOTAL_ATTEMPTED" -eq 0 ]; then
+            echo "ℹ️ No recurring payments were due for processing"
+          else
+            echo "✅ Recurring payments processing completed successfully"
+          fi
+
+      - name: Create Summary
+        if: always()
+        run: |
+          echo "## Recurring Payments Processing Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Run Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY 
