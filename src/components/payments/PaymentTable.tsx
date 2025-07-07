@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { PaymentRequest } from '../../types';
-import { format } from 'date-fns';
-import PaymentStatusBadge from './PaymentStatusBadge';
+import React, { useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { PaymentRequest } from "../../types";
+import { format } from "date-fns";
+import PaymentStatusBadge from "./PaymentStatusBadge";
 import {
   ChevronDown,
   ChevronUp,
@@ -14,17 +14,17 @@ import {
   AlertCircle,
   AlertTriangle,
   Minus,
-} from 'lucide-react';
-import Card from '../ui/Card';
-import Input from '../ui/Input';
-import Button from '../ui/Button';
-import ConfirmDialog from '../ui/ConfirmDialog';
-import QueryDialog from './QueryDialog';
-import AccountsQueryDialog from './AccountsQueryDialog';
-import ProcessPaymentDialog from './ProcessPaymentDialog';
-import ApprovePaymentDialog from './ApprovePaymentDialog';
-import { useAuthStore } from '../../store/authStore';
-import Tooltip from '../../components/ui/Tooltip';
+} from "lucide-react";
+import Card from "../ui/Card";
+import Input from "../ui/Input";
+import Button from "../ui/Button";
+import ConfirmDialog from "../ui/ConfirmDialog";
+import QueryDialog from "./QueryDialog";
+import AccountsQueryDialog from "./AccountsQueryDialog";
+import ProcessPaymentDialog from "./ProcessPaymentDialog";
+import ApprovePaymentDialog from "./ApprovePaymentDialog";
+import { useAuthStore } from "../../store/authStore";
+import Tooltip from "../../components/ui/Tooltip";
 
 interface PaymentTableProps {
   payments: PaymentRequest[];
@@ -39,7 +39,12 @@ interface PaymentTableProps {
   onBulkProcess?: (ids: string[]) => void;
   onBulkAccountsVerify?: (ids: string[]) => void;
   onBulkMarkInvoiceRecieved?: (ids: string[]) => void;
-  onProcess?: (id: string, invoiceReceived: 'yes' | 'no', paymentAmount: number, reason: string) => void;
+  onProcess?: (
+    id: string,
+    invoiceReceived: "yes" | "no",
+    paymentAmount: number,
+    reason: string
+  ) => void;
   onQuery?: (id: string, query: string) => void;
   onAccountsQuery?: (id: string, query: string) => void;
   onMarkInvoiceReceived?: (id: string) => void;
@@ -57,8 +62,8 @@ interface PaymentTableProps {
     onPageSizeChange: (pageSize: number) => void;
     // Add sorting support
     sortField?: string;
-    sortDirection?: 'asc' | 'desc';
-    onSort?: (field: string, direction: 'asc' | 'desc') => void;
+    sortDirection?: "asc" | "desc";
+    onSort?: (field: string, direction: "asc" | "desc") => void;
     // Add search support
     searchTerm?: string;
     onSearch?: (searchTerm: string) => void;
@@ -90,20 +95,20 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
 }) => {
   const { user } = useAuthStore();
   const [searchParams] = useSearchParams();
-  const pageType = searchParams.get('type') ?? 'query';
+  const pageType = searchParams.get("type") ?? "query";
   const navigate = useNavigate();
 
   // Use server-side search when available, otherwise use local search
-  const [localSearchTerm, setLocalSearchTerm] = useState('');
+  const [localSearchTerm, setLocalSearchTerm] = useState("");
 
   // For display purposes, always use localSearchTerm so user sees what they type
   // The server search term is handled separately through the onSearch callback
 
   // Use server-side sorting when available, otherwise use local sorting
   const [localSortField, setLocalSortField] =
-    useState<keyof PaymentRequest>('date');
-  const [localSortDirection, setLocalSortDirection] = useState<'asc' | 'desc'>(
-    'desc'
+    useState<keyof PaymentRequest>("date");
+  const [localSortDirection, setLocalSortDirection] = useState<"asc" | "desc">(
+    "desc"
   );
 
   const sortField = serverPagination?.sortField || localSortField;
@@ -122,16 +127,16 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     action: () => void;
   }>({
     isOpen: false,
-    title: '',
-    message: '',
-    action: () => { },
+    title: "",
+    message: "",
+    action: () => {},
   });
   const [queryDialog, setQueryDialog] = useState<{
     isOpen: boolean;
     paymentId: string;
   }>({
     isOpen: false,
-    paymentId: '',
+    paymentId: "",
   });
 
   const [accountsQueryDialog, setAccountsQueryDialog] = useState<{
@@ -139,7 +144,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     paymentId: string;
   }>({
     isOpen: false,
-    paymentId: '',
+    paymentId: "",
   });
 
   const [processDialog, setProcessDialog] = useState<{
@@ -148,7 +153,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     currentPaymentAmount: number;
   }>({
     isOpen: false,
-    paymentId: '',
+    paymentId: "",
     currentPaymentAmount: 0,
   });
 
@@ -158,7 +163,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     currentPaymentAmount: number;
   }>({
     isOpen: false,
-    paymentId: '',
+    paymentId: "",
     currentPaymentAmount: 0,
   });
 
@@ -183,15 +188,15 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     if (isServerPagination && serverPagination.onSort) {
       // Server-side sorting
       const newDirection =
-        sortField === field && sortDirection === 'asc' ? 'desc' : 'asc';
+        sortField === field && sortDirection === "asc" ? "desc" : "asc";
       serverPagination.onSort(field as string, newDirection);
     } else {
       // Client-side sorting
       if (localSortField === field) {
-        setLocalSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+        setLocalSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
       } else {
         setLocalSortField(field);
-        setLocalSortDirection('asc');
+        setLocalSortDirection("asc");
       }
 
       // Reset to first page when sorting (local pagination only)
@@ -222,7 +227,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
         payment.serialNumber?.toString().includes(localSearchTerm) ||
         payment.status?.toLowerCase().includes(searchLower) ||
         payment.advanceDetails
-          ?.replace(/_/g, ' ')
+          ?.replace(/_/g, " ")
           .toLowerCase()
           .includes(searchLower)
       );
@@ -236,32 +241,32 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
       let comparison = 0;
 
       switch (localSortField) {
-        case 'serialNumber':
+        case "serialNumber":
           comparison = a.serialNumber - b.serialNumber;
           break;
-        case 'date':
+        case "date":
           comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
           break;
-        case 'companyName':
+        case "companyName":
           comparison = a.companyName.localeCompare(b.companyName);
           break;
-        case 'vendorName':
+        case "vendorName":
           comparison = a.vendorName.localeCompare(b.vendorName);
           break;
-        case 'advanceDetails':
+        case "advanceDetails":
           comparison = a.advanceDetails.localeCompare(b.advanceDetails);
           break;
-        case 'paymentAmount':
+        case "paymentAmount":
           comparison = a.paymentAmount - b.paymentAmount;
           break;
-        case 'status':
+        case "status":
           comparison = a.status.localeCompare(b.status);
           break;
         default:
           comparison = 0;
       }
 
-      return localSortDirection === 'asc' ? comparison : -comparison;
+      return localSortDirection === "asc" ? comparison : -comparison;
     });
 
   // Client-side pagination calculations (only used when not using server pagination)
@@ -355,8 +360,8 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const handleReject = (id: string) => {
     setConfirmDialog({
       isOpen: true,
-      title: 'Reject Payment',
-      message: 'Are you sure you want to reject this payment request?',
+      title: "Reject Payment",
+      message: "Are you sure you want to reject this payment request?",
       action: () => {
         onReject?.(id);
         setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -372,8 +377,17 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     });
   };
 
-  const handleProcessSubmit = (invoiceReceived: 'yes' | 'no', paymentAmount: number, reason: string) => {
-    onProcess?.(processDialog.paymentId, invoiceReceived, paymentAmount, reason);
+  const handleProcessSubmit = (
+    invoiceReceived: "yes" | "no",
+    paymentAmount: number,
+    reason: string
+  ) => {
+    onProcess?.(
+      processDialog.paymentId,
+      invoiceReceived,
+      paymentAmount,
+      reason
+    );
     setProcessDialog((prev) => ({ ...prev, isOpen: false }));
   };
 
@@ -392,9 +406,9 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const handleMarkInvoiceReceived = (id: string) => {
     setConfirmDialog({
       isOpen: true,
-      title: 'Mark Invoice Received',
+      title: "Mark Invoice Received",
       message:
-        'Are you sure you want to mark the invoice as received for this payment?',
+        "Are you sure you want to mark the invoice as received for this payment?",
       action: () => {
         onMarkInvoiceReceived?.(id);
         setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -403,23 +417,25 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   };
 
   const handleVerify = (id: string) => {
-    const payment = payments.find(p => p.id === id);
+    const payment = payments.find((p) => p.id === id);
     if (!payment) return;
 
     setConfirmDialog({
       isOpen: true,
-      title: 'Verify Payment',
+      title: "Verify Payment",
       message: (
         <div className="space-y-2">
           <p>Are you sure you want to verify this payment request?</p>
           <div className="mt-4 space-y-2 text-sm text-gray-600">
             <div className="flex justify-between">
               <span className="font-medium">Amount:</span>
-              <span>{payment.paymentAmount.toLocaleString('en-IN', {
-                style: 'currency',
-                currency: 'INR',
-                maximumFractionDigits: 0,
-              })}</span>
+              <span>
+                {payment.paymentAmount.toLocaleString("en-IN", {
+                  style: "currency",
+                  currency: "INR",
+                  maximumFractionDigits: 0,
+                })}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="font-medium">Vendor:</span>
@@ -427,14 +443,16 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
             </div>
             <div className="flex justify-between">
               <span className="font-medium">Company:</span>
-              <span>{payment.companyName}, {payment.companyBranch}</span>
+              <span>
+                {payment.companyName}, {payment.companyBranch}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="font-medium">Payment Against:</span>
               <div className="flex flex-col items-end max-w-[65%]">
                 <span className="font-semibold text-right leading-tight text-gray-900">
                   {payment.advanceDetails
-                    .replace(/_/g, ' ')
+                    .replace(/_/g, " ")
                     .replace(/\b\w/g, (l) => l.toUpperCase())}
                 </span>
               </div>
@@ -456,10 +474,10 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
       const eligiblePayments = paginatedPayments
         .filter(
           (payment) =>
-            (user?.role === 'admin' && payment.status === 'pending') ||
-            (user?.role === 'accounts' && payment.status === 'approved') ||
-            (user?.role === 'accounts' && payment.status === 'processed') ||
-            (user?.role === 'accounts' && payment.status === 'pending')
+            (user?.role === "admin" && payment.status === "pending") ||
+            (user?.role === "accounts" && payment.status === "approved") ||
+            (user?.role === "accounts" && payment.status === "processed") ||
+            (user?.role === "accounts" && payment.status === "pending")
         )
         .slice(0, maxSelections || 10)
         .map((payment) => payment.id);
@@ -487,7 +505,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const handleBulkApprove = () => {
     setConfirmDialog({
       isOpen: true,
-      title: 'Bulk Approve Payments',
+      title: "Bulk Approve Payments",
       message: `Are you sure you want to approve ${selectedPayments.size} payment(s)?`,
       action: () => {
         onBulkApprove?.(Array.from(selectedPayments));
@@ -500,7 +518,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const handleBulkReject = () => {
     setConfirmDialog({
       isOpen: true,
-      title: 'Bulk Reject Payments',
+      title: "Bulk Reject Payments",
       message: `Are you sure you want to reject ${selectedPayments.size} payment(s)?`,
       action: () => {
         onBulkReject?.(Array.from(selectedPayments));
@@ -513,7 +531,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const handleBulkProcess = () => {
     setConfirmDialog({
       isOpen: true,
-      title: 'Bulk Process Payments',
+      title: "Bulk Process Payments",
       message: `Are you sure you want to process ${selectedPayments.size} payment(s)?`,
       action: () => {
         onBulkProcess?.(Array.from(selectedPayments));
@@ -526,7 +544,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const handleBulkAccountsVerify = () => {
     setConfirmDialog({
       isOpen: true,
-      title: 'Bulk Accounts Verify Payments',
+      title: "Bulk Accounts Verify Payments",
       message: `Are you sure you want to verify ${selectedPayments.size} payment(s)?`,
       action: () => {
         onBulkAccountsVerify?.(Array.from(selectedPayments));
@@ -539,7 +557,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const handleBulkMarkInvoiceRecieved = () => {
     setConfirmDialog({
       isOpen: true,
-      title: 'Bulk Mark Invoice Recieved',
+      title: "Bulk Mark Invoice Recieved",
       message: `Are you sure you want to mark invoice recieved for ${selectedPayments.size} payment(s)?`,
       action: () => {
         onBulkMarkInvoiceRecieved?.(Array.from(selectedPayments));
@@ -562,7 +580,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const getSortIcon = (field: keyof PaymentRequest) => {
     if (sortField !== field)
       return <ChevronDown className="h-4 w-4 text-gray-400" />;
-    return sortDirection === 'asc' ? (
+    return sortDirection === "asc" ? (
       <ChevronUp className="h-4 w-4 text-primary-600" />
     ) : (
       <ChevronDown className="h-4 w-4 text-primary-600" />
@@ -592,7 +610,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
               {localSearchTerm && (
                 <div className="absolute inset-y-0 right-0 flex items-center pr-3">
                   <button
-                    onClick={() => setLocalSearchTerm('')}
+                    onClick={() => setLocalSearchTerm("")}
                     className="text-gray-400 hover:text-gray-600 focus:outline-none"
                     type="button"
                   >
@@ -670,7 +688,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                 {localSearchTerm && (
                   <div className="absolute inset-y-0 right-0 flex items-center pr-3">
                     <button
-                      onClick={() => setLocalSearchTerm('')}
+                      onClick={() => setLocalSearchTerm("")}
                       className="text-gray-400 hover:text-gray-600 focus:outline-none"
                       type="button"
                     >
@@ -699,7 +717,9 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   <select
                     id="pageSize"
                     value={pageSize}
-                    onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                    onChange={(e) =>
+                      handlePageSizeChange(Number(e.target.value))
+                    }
                     className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                   >
                     <option value={5}>5</option>
@@ -712,9 +732,10 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   <Filter className="h-4 w-4" />
                   <span>
                     {isSearching
-                      ? 'Searching...'
-                      : `Showing ${displayStartIndex + 1
-                      }-${displayEndIndex} of ${displayTotalCount} payments`}
+                      ? "Searching..."
+                      : `Showing ${
+                          displayStartIndex + 1
+                        }-${displayEndIndex} of ${displayTotalCount} payments`}
                   </span>
                 </div>
               </div>
@@ -730,7 +751,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
               <div className="flex flex-col space-y-1 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-3">
                 <span className="text-sm font-medium text-blue-900">
                   {selectedPayments.size} payment
-                  {selectedPayments.size !== 1 ? 's' : ''} selected
+                  {selectedPayments.size !== 1 ? "s" : ""} selected
                 </span>
                 {maxSelections > 0 && (
                   <span className="text-xs text-blue-700">
@@ -742,7 +763,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
               {/* Action Buttons */}
               <div className="flex flex-col space-y-2 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-2">
                 <div className="flex flex-wrap gap-2">
-                  {user?.role === 'admin' ? (
+                  {user?.role === "admin" ? (
                     <>
                       <Button
                         size="sm"
@@ -751,7 +772,9 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         disabled={selectedPayments.size === 0}
                         className="text-xs sm:text-sm"
                       >
-                        <span className="hidden sm:inline">Approve Selected</span>
+                        <span className="hidden sm:inline">
+                          Approve Selected
+                        </span>
                         <span className="sm:hidden">
                           Approve ({selectedPayments.size})
                         </span>
@@ -763,29 +786,33 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         disabled={selectedPayments.size === 0}
                         className="text-xs sm:text-sm"
                       >
-                        <span className="hidden sm:inline">Reject Selected</span>
+                        <span className="hidden sm:inline">
+                          Reject Selected
+                        </span>
                         <span className="sm:hidden">
                           Reject ({selectedPayments.size})
                         </span>
                       </Button>
                     </>
-                  ) : user?.role === 'accounts' ? (
-                    pageType === 'overdue' ? (
+                  ) : user?.role === "accounts" ? (
+                    pageType === "overdue" ? (
                       <>
                         <Button
                           size="sm"
-                          variant='success'
+                          variant="success"
                           onClick={handleBulkMarkInvoiceRecieved}
                           disabled={selectedPayments.size === 0}
                           className="text-xs sm:text-sm"
                         >
-                          <span className="hidden sm:inline">Mark Invoice Recieved</span>
+                          <span className="hidden sm:inline">
+                            Mark Invoice Recieved
+                          </span>
                           <span className="sm:hidden">
                             Process ({selectedPayments.size})
                           </span>
                         </Button>
                       </>
-                    ) : typeof onBulkAccountsVerify === 'function' ? (
+                    ) : typeof onBulkAccountsVerify === "function" ? (
                       <Button
                         size="sm"
                         variant="success"
@@ -793,7 +820,9 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         disabled={selectedPayments.size === 0}
                         className="text-xs sm:text-sm"
                       >
-                        <span className="hidden sm:inline">Verify Selected</span>
+                        <span className="hidden sm:inline">
+                          Verify Selected
+                        </span>
                         <span className="sm:hidden">
                           Process ({selectedPayments.size})
                         </span>
@@ -806,14 +835,15 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         disabled={selectedPayments.size === 0}
                         className="text-xs sm:text-sm"
                       >
-                        <span className="hidden sm:inline">Process Selected</span>
+                        <span className="hidden sm:inline">
+                          Process Selected
+                        </span>
                         <span className="sm:hidden">
                           Process ({selectedPayments.size})
                         </span>
                       </Button>
                     )
                   ) : null}
-
                 </div>
                 <Button
                   size="sm"
@@ -840,12 +870,12 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
             </h3>
             <p className="mt-1 text-sm text-gray-500">
               {localSearchTerm
-                ? 'No payments match your search criteria. Try adjusting your search term.'
-                : 'No payments have been requested yet'}
+                ? "No payments match your search criteria. Try adjusting your search term."
+                : "No payments have been requested yet"}
             </p>
             {localSearchTerm && (
               <button
-                onClick={() => setLocalSearchTerm('')}
+                onClick={() => setLocalSearchTerm("")}
                 className="mt-3 inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-primary-600 bg-primary-100 hover:bg-primary-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
               >
                 Clear search
@@ -857,49 +887,62 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
             {/* Mobile Card Layout */}
             <div className="md:hidden space-y-4">
               {/* Mobile Select All Bar */}
-              {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="checkbox"
-                        className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        checked={
-                          selectedPayments.size > 0 &&
-                          selectedPayments.size ===
-                          paginatedPayments.filter(
-                            (p) =>
-                              (user?.role === 'admin' && p.status === 'pending') ||
-                              (user?.role === 'accounts' && p.status === 'approved') ||
-                              (user?.role === 'accounts' && p.status === 'processed') ||
-                              (user?.role === 'accounts' && p.status === 'pending')
-                          ).length
-                        }
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                      />
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">
-                          Select All Eligible Payments
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {selectedPayments.size} of {paginatedPayments.filter(
-                            (p) =>
-                              (user?.role === 'admin' && p.status === 'pending') ||
-                              (user?.role === 'accounts' && p.status === 'approved') ||
-                              (user?.role === 'accounts' && p.status === 'processed') ||
-                              (user?.role === 'accounts' && p.status === 'pending')
-                          ).length} selected
+              {enableBulkSelection &&
+                (user?.role === "admin" || user?.role === "accounts") && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          checked={
+                            selectedPayments.size > 0 &&
+                            selectedPayments.size ===
+                              paginatedPayments.filter(
+                                (p) =>
+                                  (user?.role === "admin" &&
+                                    p.status === "pending") ||
+                                  (user?.role === "accounts" &&
+                                    p.status === "approved") ||
+                                  (user?.role === "accounts" &&
+                                    p.status === "processed") ||
+                                  (user?.role === "accounts" &&
+                                    p.status === "pending")
+                              ).length
+                          }
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                        />
+                        <div>
+                          <div className="text-sm font-medium text-gray-900">
+                            Select All Eligible Payments
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {selectedPayments.size} of{" "}
+                            {
+                              paginatedPayments.filter(
+                                (p) =>
+                                  (user?.role === "admin" &&
+                                    p.status === "pending") ||
+                                  (user?.role === "accounts" &&
+                                    p.status === "approved") ||
+                                  (user?.role === "accounts" &&
+                                    p.status === "processed") ||
+                                  (user?.role === "accounts" &&
+                                    p.status === "pending")
+                              ).length
+                            }{" "}
+                            selected
+                          </div>
                         </div>
                       </div>
+                      {maxSelections > 0 && (
+                        <div className="text-xs text-gray-500 bg-blue-100 px-2 py-1 rounded">
+                          Max {maxSelections}
+                        </div>
+                      )}
                     </div>
-                    {maxSelections > 0 && (
-                      <div className="text-xs text-gray-500 bg-blue-100 px-2 py-1 rounded">
-                        Max {maxSelections}
-                      </div>
-                    )}
                   </div>
-                </div>
-              )}
+                )}
 
               {paginatedPayments.map((payment) => (
                 <div
@@ -910,56 +953,64 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   {/* Header with SR No and Status */}
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center space-x-3">
-                      {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
-                        <input
-                          type="checkbox"
-                          className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                          checked={selectedPayments.has(payment.id)}
-                          disabled={
-                            ((user?.role === 'admin' && payment.status !== 'pending') ||
-                              (user?.role === 'accounts' && payment.status !== 'approved' &&
-                                payment.status !== 'processed' && payment.status !== 'pending')) ||
-                            (maxSelections > 0 &&
-                              selectedPayments.size >= maxSelections &&
-                              !selectedPayments.has(payment.id))
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleSelectPayment(payment.id, e.target.checked);
-                          }}
-                        />
-                      )}
+                      {enableBulkSelection &&
+                        (user?.role === "admin" ||
+                          user?.role === "accounts") && (
+                          <input
+                            type="checkbox"
+                            className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            checked={selectedPayments.has(payment.id)}
+                            disabled={
+                              (user?.role === "admin" &&
+                                payment.status !== "pending") ||
+                              (user?.role === "accounts" &&
+                                payment.status !== "approved" &&
+                                payment.status !== "processed" &&
+                                payment.status !== "pending") ||
+                              (maxSelections > 0 &&
+                                selectedPayments.size >= maxSelections &&
+                                !selectedPayments.has(payment.id))
+                            }
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleSelectPayment(payment.id, e.target.checked);
+                            }}
+                          />
+                        )}
                       <div>
                         <span className="text-lg font-bold text-gray-900">
                           #{payment.serialNumber}
                         </span>
                         <div className="text-xs text-gray-500 mt-1">
-                          {format(new Date(payment.date), 'dd/MM/yyyy')}
+                          {format(new Date(payment.date), "dd/MM/yyyy")}
                         </div>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <div className="flex flex-col items-end gap-1">
                         <PaymentStatusBadge status={payment.status} />
-                        <Tooltip content={
-                          payment.urgencyLevel === 'high'
-                            ? 'High Priority - Requires immediate attention and processing'
-                            : payment.urgencyLevel === 'medium'
-                              ? 'Medium Priority - Standard processing timeline'
-                              : 'Low Priority - Routine processing, no urgency'
-                        }>
+                        <Tooltip
+                          content={
+                            payment.urgencyLevel === "high"
+                              ? "High Priority - Requires immediate attention and processing"
+                              : payment.urgencyLevel === "medium"
+                              ? "Medium Priority - Standard processing timeline"
+                              : "Low Priority - Routine processing, no urgency"
+                          }
+                        >
                           <div
-                            className={`p-1 rounded-full ${payment.urgencyLevel === 'high'
-                                ? 'bg-red-100 text-red-800'
-                                : payment.urgencyLevel === 'medium'
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-green-100 text-green-800'
-                              }`}
+                            className={`p-1 rounded-full ${
+                              payment.urgencyLevel === "high"
+                                ? "bg-red-100 text-red-800"
+                                : payment.urgencyLevel === "medium"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-green-100 text-green-800"
+                            }`}
                           >
-                            {payment.urgencyLevel === 'high' ? (
+                            {payment.urgencyLevel === "high" ? (
                               <AlertTriangle className="h-4 w-4" />
-                            ) : payment.urgencyLevel === 'medium' ? (
+                            ) : payment.urgencyLevel === "medium" ? (
                               <Minus className="h-4 w-4" />
                             ) : (
                               <CheckCircle2 className="h-4 w-4" />
@@ -967,28 +1018,38 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           </div>
                         </Tooltip>
                       </div>
-                      {payment.status !== 'processed' && payment.accountsQuery && (
-                        <Tooltip content={`Accounts Query: ${payment.accountsQuery}`}>
-                          <AlertCircle className="h-5 w-5 text-amber-500" aria-label="Accounts Query Raised" />
-                        </Tooltip>
-                      )}
+                      {payment.status !== "processed" &&
+                        payment.accountsQuery && (
+                          <Tooltip
+                            content={`Accounts Query: ${payment.accountsQuery}`}
+                          >
+                            <AlertCircle
+                              className="h-5 w-5 text-amber-500"
+                              aria-label="Accounts Query Raised"
+                            />
+                          </Tooltip>
+                        )}
                     </div>
                   </div>
 
                   {/* Amount - Prominent Display */}
                   <div className="mb-2 p-1 bg-gray-50 rounded-lg">
                     <div className="text-center">
-                      <div className="text-xs text-gray-500 mb-1">Payment Amount</div>
+                      <div className="text-xs text-gray-500 mb-1">
+                        Payment Amount
+                      </div>
                       <div className="flex items-center justify-center gap-2">
                         <div className="text-2xl font-bold text-gray-900">
-                          {payment.paymentAmount.toLocaleString('en-IN', {
-                            style: 'currency',
-                            currency: 'INR',
+                          {payment.paymentAmount.toLocaleString("en-IN", {
+                            style: "currency",
+                            currency: "INR",
                             maximumFractionDigits: 0,
                           })}
                         </div>
-                        {payment.accountsVerificationStatus === 'verified' &&
-                          !['query_raised', 'rejected'].includes(payment.status) && (
+                        {payment.accountsVerificationStatus === "verified" &&
+                          !["query_raised", "rejected"].includes(
+                            payment.status
+                          ) && (
                             <Tooltip content="Approved by Accounts">
                               <span className="inline-flex items-center px-2 py-1 rounded-xl text-xs font-bold bg-cyan-200 text-cyan-800 flex-shrink-0">
                                 AA
@@ -1002,10 +1063,14 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   {/* Payment Details */}
                   <div className="space-y-3 text-sm">
                     <div className="flex justify-between items-start">
-                      <span className="text-gray-500 font-medium">Company:</span>
+                      <span className="text-gray-500 font-medium">
+                        Company:
+                      </span>
                       <span className="font-semibold text-right max-w-[65%] leading-tight">
                         {payment.companyName},
-                        <span className="text-gray-600">{payment.companyBranch}</span>
+                        <span className="text-gray-600">
+                          {payment.companyBranch}
+                        </span>
                       </span>
                     </div>
 
@@ -1017,18 +1082,22 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                     </div>
 
                     <div className="flex justify-between items-start">
-                      <span className="text-gray-500 font-medium">Payment Against:</span>
+                      <span className="text-gray-500 font-medium">
+                        Payment Against:
+                      </span>
                       <div className="flex flex-col items-end max-w-[65%]">
                         <span className="font-semibold text-right leading-tight text-gray-900">
                           {payment.advanceDetails
-                            .replace(/_/g, ' ')
+                            .replace(/_/g, " ")
                             .replace(/\b\w/g, (l) => l.toUpperCase())}
                         </span>
                       </div>
                     </div>
 
                     <div className="flex justify-between items-start">
-                      <span className="text-gray-500 font-medium">Requested By:</span>
+                      <span className="text-gray-500 font-medium">
+                        Requested By:
+                      </span>
                       <span className="font-semibold text-right max-w-[65%] leading-tight">
                         {payment.requestedBy.name}
                       </span>
@@ -1042,15 +1111,18 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         className="flex flex-wrap gap-2"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {payment.status === 'pending' &&
-                          user?.role === 'admin' && (
+                        {payment.status === "pending" &&
+                          user?.role === "admin" && (
                             <>
                               <Button
                                 size="sm"
                                 variant="success"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleApprove(payment.id, payment.paymentAmount);
+                                  handleApprove(
+                                    payment.id,
+                                    payment.paymentAmount
+                                  );
                                 }}
                                 className="flex-1 min-w-[80px]"
                               >
@@ -1080,15 +1152,18 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                               </Button>
                             </>
                           )}
-                        {payment.status === 'approved' &&
-                          user?.role === 'accounts' && (
+                        {payment.status === "approved" &&
+                          user?.role === "accounts" && (
                             <>
                               <Button
                                 size="sm"
                                 variant="primary"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleProcess(payment.id, payment.paymentAmount);
+                                  handleProcess(
+                                    payment.id,
+                                    payment.paymentAmount
+                                  );
                                 }}
                                 className="flex-1 min-w-[80px]"
                               >
@@ -1109,14 +1184,13 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                               )}
                             </>
                           )}
-                        {payment.status === 'processed' &&
-                          (payment.advanceDetails === 'advance' ||
-                            payment.advanceDetails ===
-                            'advance_(bill/PI)') &&
+                        {payment.status === "processed" &&
+                          (payment.advanceDetails === "advance" ||
+                            payment.advanceDetails === "advance_(bill/PI)") &&
                           (!payment.invoiceReceived ||
-                            payment.invoiceReceived === 'no') &&
+                            payment.invoiceReceived === "no") &&
                           onMarkInvoiceReceived &&
-                          user?.role === 'accounts' && (
+                          user?.role === "accounts" && (
                             <Button
                               size="sm"
                               variant="success"
@@ -1129,9 +1203,9 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                               Mark Invoice Received
                             </Button>
                           )}
-                        {(user?.role === 'accounts' &&
-                          payment.status === 'pending' &&
-                          payment.accountsVerificationStatus === 'pending') && (
+                        {user?.role === "accounts" &&
+                          payment.status === "pending" &&
+                          payment.accountsVerificationStatus === "pending" && (
                             <>
                               <Button
                                 size="sm"
@@ -1165,112 +1239,118 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
             </div>
 
             {/* Desktop Table Layout */}
-            <div className="hidden md:block w-full overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+            <div className="hidden md:block w-full">
+              <div className="w-full overflow-x-auto xl:overflow-x-visible">
+                <table className="w-full table-auto divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
-                        <th
-                          scope="col"
-                          className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                            checked={
-                              selectedPayments.size > 0 &&
-                              selectedPayments.size ===
-                              paginatedPayments.filter(
-                                (p) =>
-                                  (user?.role === 'admin' && p.status === 'pending') ||
-                                  (user?.role === 'accounts' && p.status === 'approved') ||
-                                  (user?.role === 'accounts' && p.status === 'processed') ||
-                                  (user?.role === 'accounts' && p.status === 'pending')
-                              ).length
-                            }
-                            onChange={(e) =>
-                              handleSelectAll(e.target.checked)
-                            }
-                          />
-                        </th>
-                      )}
+                      {enableBulkSelection &&
+                        (user?.role === "admin" ||
+                          user?.role === "accounts") && (
+                          <th
+                            scope="col"
+                            className="px-1 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8"
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                              checked={
+                                selectedPayments.size > 0 &&
+                                selectedPayments.size ===
+                                  paginatedPayments.filter(
+                                    (p) =>
+                                      (user?.role === "admin" &&
+                                        p.status === "pending") ||
+                                      (user?.role === "accounts" &&
+                                        p.status === "approved") ||
+                                      (user?.role === "accounts" &&
+                                        p.status === "processed") ||
+                                      (user?.role === "accounts" &&
+                                        p.status === "pending")
+                                  ).length
+                              }
+                              onChange={(e) =>
+                                handleSelectAll(e.target.checked)
+                              }
+                            />
+                          </th>
+                        )}
                       <th
                         scope="col"
                         className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                        onClick={() => handleSort('serialNumber')}
+                        onClick={() => handleSort("serialNumber")}
                       >
                         <div className="flex items-center space-x-1">
                           <span>SR No.</span>
-                          {getSortIcon('serialNumber')}
+                          {getSortIcon("serialNumber")}
                         </div>
                       </th>
                       <th
                         scope="col"
                         className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                        onClick={() => handleSort('date')}
+                        onClick={() => handleSort("date")}
                       >
                         <div className="flex items-center space-x-1">
                           <span>Date</span>
-                          {getSortIcon('date')}
+                          {getSortIcon("date")}
                         </div>
                       </th>
                       <th
                         scope="col"
-                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                        onClick={() => handleSort('companyName')}
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer w-[200px] whitespace-normal break-words"
+                        onClick={() => handleSort("companyName")}
                       >
                         <div className="flex items-center space-x-1">
-                          <span>Company/Branch</span>
-                          {getSortIcon('companyName')}
+                          <span>Company, Branch</span>
+                          {getSortIcon("companyName")}
                         </div>
                       </th>
                       <th
                         scope="col"
-                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[260px] whitespace-normal break-words"
                       >
                         Vendor
                       </th>
                       <th
                         scope="col"
-                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                        onClick={() => handleSort('advanceDetails')}
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer w-[220px]"
+                        onClick={() => handleSort("advanceDetails")}
                       >
                         <div className="flex items-center space-x-1">
-                          <span>PAY AGAINST</span>
-                          {getSortIcon('advanceDetails')}
+                          <span className="break-words whitespace-normal">PAY AGAINST</span>
+                          {getSortIcon("advanceDetails")}
                         </div>
                       </th>
                       <th
                         scope="col"
                         className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                        onClick={() => handleSort('paymentAmount')}
+                        onClick={() => handleSort("paymentAmount")}
                       >
                         <div className="flex items-center space-x-1">
                           <span>Amount</span>
-                          {getSortIcon('paymentAmount')}
+                          {getSortIcon("paymentAmount")}
                         </div>
                       </th>
                       <th
                         scope="col"
                         className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
-                        onClick={() => handleSort('status')}
+                        onClick={() => handleSort("status")}
                       >
                         <div className="flex items-center space-x-1">
                           <span>Status</span>
-                          {getSortIcon('status')}
+                          {getSortIcon("status")}
                         </div>
                       </th>
                       <th
                         scope="col"
-                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[120px]"
                       >
                         Requested By
                       </th>
                       {showActions && (
                         <th
                           scope="col"
-                          className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider lg:w-[200px] xl:w-[350px]"
                         >
                           Actions
                         </th>
@@ -1284,64 +1364,71 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                         onClick={() => handleRowClick(payment)}
                       >
-                        {enableBulkSelection && (user?.role === 'admin' || user?.role === 'accounts') && (
-                          <td
-                            className="px-3 py-4 text-sm font-medium text-gray-900"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              checked={selectedPayments.has(payment.id)}
-                              disabled={
-                                ((user?.role === 'admin' && payment.status !== 'pending') ||
-                                  (user?.role === 'accounts' && payment.status !== 'approved' &&
-                                    payment.status !== 'processed' && payment.status !== 'pending')) ||
-                                (maxSelections > 0 &&
-                                  selectedPayments.size >= maxSelections &&
-                                  !selectedPayments.has(payment.id))
-                              }
+                        {enableBulkSelection &&
+                          (user?.role === "admin" ||
+                            user?.role === "accounts") && (
+                            <td
+                              className="px-1 py-4 text-sm font-medium text-gray-900 w-8"
                               onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                handleSelectPayment(
-                                  payment.id,
-                                  e.target.checked
-                                );
-                              }}
-                            />
-                          </td>
-                        )}
+                            >
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                checked={selectedPayments.has(payment.id)}
+                                disabled={
+                                  (user?.role === "admin" &&
+                                    payment.status !== "pending") ||
+                                  (user?.role === "accounts" &&
+                                    payment.status !== "approved" &&
+                                    payment.status !== "processed" &&
+                                    payment.status !== "pending") ||
+                                  (maxSelections > 0 &&
+                                    selectedPayments.size >= maxSelections &&
+                                    !selectedPayments.has(payment.id))
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectPayment(
+                                    payment.id,
+                                    e.target.checked
+                                  );
+                                }}
+                              />
+                            </td>
+                          )}
                         <td className="px-3 py-4 text-sm font-medium text-gray-900">
                           {payment.serialNumber}
                         </td>
                         <td className="px-3 py-4 text-sm text-gray-500">
-                          {format(new Date(payment.date), 'dd/MM/yyyy')}
+                          {format(new Date(payment.date), "dd/MM/yyyy")}
                         </td>
-                        <td className="px-3 py-4 text-sm text-gray-600">
-                          <div className="max-w-xs flex gap-1">
-                            <div className="font-medium truncate flex items-center gap-2">
+                        <td className="px-3 py-4 text-sm text-gray-600 w-[200px] whitespace-normal break-words">
+                          <div className="w-full flex gap-1">
+                            <div className="font-medium flex items-center gap-2">
                               {payment.companyName}, {payment.companyBranch}
-
                             </div>
-                            <Tooltip content={
-                              payment.urgencyLevel === 'high'
-                                ? 'High Priority - Requires immediate attention and processing'
-                                : payment.urgencyLevel === 'medium'
-                                  ? 'Medium Priority - Standard processing timeline'
-                                  : 'Low Priority - Routine processing, no urgency'
-                            }>
+                            <Tooltip
+                              content={
+                                payment.urgencyLevel === "high"
+                                  ? "High Priority - Requires immediate attention and processing"
+                                  : payment.urgencyLevel === "medium"
+                                  ? "Medium Priority - Standard processing timeline"
+                                  : "Low Priority - Routine processing, no urgency"
+                              }
+                            >
                               <div
-                                className={`p-1 rounded-full flex-shrink-0 ${payment.urgencyLevel === 'high'
-                                    ? 'bg-red-100 text-red-800'
-                                    : payment.urgencyLevel === 'medium'
-                                      ? 'bg-amber-100 text-amber-800'
-                                      : 'bg-green-100 text-green-800'
-                                  }`}
+                                className={`p-1 rounded-full flex-shrink-0 ${
+                                  payment.urgencyLevel === "high"
+                                    ? "bg-red-100 text-red-800"
+                                    : payment.urgencyLevel === "medium"
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-green-100 text-green-800"
+                                }`}
                               >
-                                {payment.urgencyLevel === 'high' ? (
+                                {payment.urgencyLevel === "high" ? (
                                   <AlertTriangle className="h-4 w-4" />
-                                ) : payment.urgencyLevel === 'medium' ? (
+                                ) : payment.urgencyLevel === "medium" ? (
                                   <Minus className="h-4 w-4" />
                                 ) : (
                                   <CheckCircle2 className="h-4 w-4" />
@@ -1350,22 +1437,23 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                             </Tooltip>
                           </div>
                         </td>
-                        <td className="px-3 py-4 text-sm text-gray-900">
-                          <div className="max-w-xs truncate">
-                            {payment.vendorName}
-                          </div>
+                        <td className="px-3 py-4 text-sm text-gray-900 whitespace-normal break-words w-[260px]">
+                          <div className="w-full">{payment.vendorName}</div>
                         </td>
-                        <td className="px-3 py-4 text-sm text-gray-900">
-                          <div className="flex items-center gap-2 max-w-xs">
-                            <span className="truncate">
+                        <td className="px-3 py-4 text-sm text-gray-900 w-[220px]">
+                          <div className="w-full flex items-start gap-2">
+                            <span className="break-words whitespace-normal">
                               {payment.advanceDetails
-                                .replace(/_/g, ' ')
+                                .replace(/_/g, " ")
                                 .replace(/\b\w/g, (l) => l.toUpperCase())}
                             </span>
-                            {payment.accountsVerificationStatus === 'verified' &&
-                              !['query_raised', 'rejected'].includes(payment.status) && (
+                            {payment.accountsVerificationStatus ===
+                              "verified" &&
+                              !["query_raised", "rejected"].includes(
+                                payment.status
+                              ) && (
                                 <Tooltip content="Approved by Accounts">
-                                  <span className="inline-flex items-center px-2 py-1 rounded-xl text-xs font-bold bg-cyan-200 text-cyan-800 flex-shrink-0">
+                                  <span className="inline-flex items-center px-2 py-1 rounded-xl text-xs font-bold bg-cyan-200 text-cyan-800 flex-shrink-0 mt-0.5">
                                     AA
                                   </span>
                                 </Tooltip>
@@ -1373,42 +1461,49 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           </div>
                         </td>
                         <td className="px-3 py-4 text-sm text-gray-900">
-                          {payment.paymentAmount.toLocaleString('en-IN', {
-                            style: 'currency',
-                            currency: 'INR',
+                          {payment.paymentAmount.toLocaleString("en-IN", {
+                            style: "currency",
+                            currency: "INR",
                             maximumFractionDigits: 0,
                           })}
                         </td>
                         <td className="px-3 py-4 text-sm">
                           <div className="flex items-center gap-2">
                             <PaymentStatusBadge status={payment.status} />
-                            {payment.status !== 'processed' && payment.accountsQuery && (
-                              <Tooltip content={`Accounts Query: ${payment.accountsQuery}`}>
-                                <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0" aria-label="Accounts Query Raised" />
-                              </Tooltip>
-                            )}
+                            {payment.status !== "processed" &&
+                              payment.accountsQuery && (
+                                <Tooltip
+                                  content={`Accounts Query: ${payment.accountsQuery}`}
+                                >
+                                  <AlertCircle
+                                    className="h-5 w-5 text-amber-500 flex-shrink-0"
+                                    aria-label="Accounts Query Raised"
+                                  />
+                                </Tooltip>
+                              )}
                           </div>
                         </td>
-                        <td className="px-3 py-4 text-sm text-gray-500">
-                          <div className="max-w-xs truncate">
-                            {payment.requestedBy.name}
-                          </div>
+                        <td className="px-3 py-4 text-sm text-gray-500 w-[120px]">
+                          <div className="w-full">{payment.requestedBy.name}</div>
                         </td>
                         {showActions && (
                           <td className="px-3 py-4 text-sm text-gray-500">
                             <div
-                              className="flex items-center gap-1"
+                              className="flex items-center gap-1 flex-wrap min-w-0"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              {payment.status === 'pending' &&
-                                user?.role === 'admin' && (
+                              {payment.status === "pending" &&
+                                user?.role === "admin" && (
                                   <>
                                     <Button
                                       size="xs"
                                       variant="success"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleApprove(payment.id, payment.paymentAmount);
+                                        handleApprove(
+                                          payment.id,
+                                          payment.paymentAmount
+                                        );
                                       }}
                                     >
                                       Approve
@@ -1435,15 +1530,18 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                     </Button>
                                   </>
                                 )}
-                              {payment.status === 'approved' &&
-                                user?.role === 'accounts' && (
+                              {payment.status === "approved" &&
+                                user?.role === "accounts" && (
                                   <>
                                     <Button
                                       size="xs"
                                       variant="primary"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        handleProcess(payment.id, payment.paymentAmount);
+                                        handleProcess(
+                                          payment.id,
+                                          payment.paymentAmount
+                                        );
                                       }}
                                     >
                                       Process
@@ -1462,14 +1560,14 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                     )}
                                   </>
                                 )}
-                              {payment.status === 'processed' &&
-                                (payment.advanceDetails === 'advance' ||
+                              {payment.status === "processed" &&
+                                (payment.advanceDetails === "advance" ||
                                   payment.advanceDetails ===
-                                  'advance_(bill/PI)') &&
+                                    "advance_(bill/PI)") &&
                                 (!payment.invoiceReceived ||
-                                  payment.invoiceReceived === 'no') &&
+                                  payment.invoiceReceived === "no") &&
                                 onMarkInvoiceReceived &&
-                                user?.role === 'accounts' && (
+                                user?.role === "accounts" && (
                                   <Button
                                     size="xs"
                                     variant="success"
@@ -1481,9 +1579,10 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                     Mark Invoice Received
                                   </Button>
                                 )}
-                              {(user?.role === 'accounts' &&
-                                payment.status === 'pending' &&
-                                payment.accountsVerificationStatus === 'pending') && (
+                              {user?.role === "accounts" &&
+                                payment.status === "pending" &&
+                                payment.accountsVerificationStatus ===
+                                  "pending" && (
                                   <>
                                     <Button
                                       size="xs"
@@ -1577,10 +1676,11 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         <button
                           key={page}
                           onClick={() => handlePageChange(page)}
-                          className={`w-10 h-10 text-sm font-medium rounded-lg transition-colors ${page === currentPage
-                              ? 'bg-primary-600 text-white shadow-md'
-                              : 'text-gray-700 hover:bg-gray-100 border border-gray-300'
-                            }`}
+                          className={`w-10 h-10 text-sm font-medium rounded-lg transition-colors ${
+                            page === currentPage
+                              ? "bg-primary-600 text-white shadow-md"
+                              : "text-gray-700 hover:bg-gray-100 border border-gray-300"
+                          }`}
                         >
                           {page}
                         </button>
@@ -1603,13 +1703,13 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                 <div className="hidden md:flex md:flex-1 md:items-center md:justify-between">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-gray-700 truncate">
-                      Showing{' '}
+                      Showing{" "}
                       <span className="font-medium">
                         {displayStartIndex + 1}
-                      </span>{' '}
-                      to <span className="font-medium">{displayEndIndex}</span>{' '}
-                      of{' '}
-                      <span className="font-medium">{displayTotalCount}</span>{' '}
+                      </span>{" "}
+                      to <span className="font-medium">{displayEndIndex}</span>{" "}
+                      of{" "}
+                      <span className="font-medium">{displayTotalCount}</span>{" "}
                       results
                     </p>
                   </div>
@@ -1660,10 +1760,11 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           <button
                             key={page}
                             onClick={() => handlePageChange(page)}
-                            className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${page === currentPage
-                              ? 'z-10 bg-primary-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600'
-                              : 'text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0'
-                              }`}
+                            className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ${
+                              page === currentPage
+                                ? "z-10 bg-primary-600 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
+                                : "text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:z-20 focus:outline-offset-0"
+                            }`}
                           >
                             {page}
                           </button>
