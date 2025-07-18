@@ -815,10 +815,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           payments: state.payments.map((payment) =>
             payment.id === id ? transformedPayment : payment
           ),
+          filteredPayments: state.filteredPayments.map((payment) =>
+            payment.id === id ? transformedPayment : payment
+          ),
           isLoading: false,
         }));
-
-        get().applyFilters();
+        // get().applyFilters(); // No longer needed for instant UI update
         return true;
       } catch (error) {
         console.error('Error approving payment:', error);
@@ -860,10 +862,12 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           payments: state.payments.map(payment =>
             payment.id === id ? transformedPayment : payment
           ),
+          filteredPayments: state.filteredPayments.map(payment =>
+            payment.id === id ? transformedPayment : payment
+          ),
           isLoading: false
         }));
-
-        get().applyFilters();
+        // get().applyFilters(); // No longer needed for instant UI update
         return true;
       } catch (error) {
         console.error('Error rejecting payment:', error);
