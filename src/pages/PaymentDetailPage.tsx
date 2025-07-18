@@ -35,7 +35,7 @@ import { supabase } from '../lib/supabase';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 import { Capacitor } from '@capacitor/core';
-import { toast } from 'react-hot-toast';
+import { showSuccessToast, showErrorToast } from '../lib/toast';
 
 const PaymentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -100,6 +100,13 @@ const PaymentDetailPage: React.FC = () => {
     if (currentPaymentIndex < payments.length - 1) {
       const nextPayment = payments[currentPaymentIndex + 1];
       navigate(`/payments/${nextPayment.id}?nav=true&source=${source}`);
+    } else {
+      // If at the end, go back to source or /payments
+      if (source) {
+        navigate(source);
+      } else {
+        navigate('/payments');
+      }
     }
   };
 
@@ -225,7 +232,7 @@ const PaymentDetailPage: React.FC = () => {
         }
       } catch (error) {
         console.error('Error fetching payment details:', error);
-        toast.error('Failed to load payment details');
+        showErrorToast('Failed to load payment details');
       } finally {
         setIsLoadingPayment(false);
       }
@@ -244,7 +251,7 @@ const PaymentDetailPage: React.FC = () => {
     };
     const handleOffline = () => {
       setIsOnline(false);
-      toast.error(
+      showErrorToast(
         'No internet connection. Please check your connection and try again.'
       );
     };
@@ -361,59 +368,13 @@ const PaymentDetailPage: React.FC = () => {
     if (!user || !payment) return;
     await approvePayment(payment.id, user, paymentAmount, reason);
     setIsApproveDialogOpen(false);
-    // Refresh payments list and get the response
-    const response = await fetchPayments(1, 10, true, filterOptions);
-    // If we're in navigation mode and there are no more payments, go to payments page
-    if (showNavigation && (!response?.payments || response.payments.length === 0)) {
-      // Clear all filters and navigate to payments page
-      setFilterOptions({
-        status: ['pending', 'approved', 'rejected', 'processed', 'query_raised'],
-        dateRange: { start: null, end: null },
-        vendor: null,
-        company: null,
-        companyList: null,
-        overdueInvoices: false,
-        hasAccountsQuery: false,
-      });
-      navigate('/payments');
-      return;
-    }
-    // If we're in navigation mode and there are more payments, go to next
-    if (showNavigation && response?.payments && response.payments.length > 0) {
-      const nextPayment = response.payments[0]; // Get the first payment from the updated list
-      navigate(`/payments/${nextPayment.id}?nav=true`);
-    } else {
-      navigate(-1);
-    }
+    handleNext();
   };
 
   const handleReject = async () => {
     if (!user || !payment) return;
     await rejectPayment(payment.id, user);
-    // Refresh payments list and get the response
-    const response = await fetchPayments(1, 10, true, filterOptions);
-    // If we're in navigation mode and there are no more payments, go to payments page
-    if (showNavigation && (!response?.payments || response.payments.length === 0)) {
-      // Clear all filters and navigate to payments page
-      setFilterOptions({
-        status: ['pending', 'approved', 'rejected', 'processed', 'query_raised'],
-        dateRange: { start: null, end: null },
-        vendor: null,
-        company: null,
-        companyList: null,
-        overdueInvoices: false,
-        hasAccountsQuery: false,
-      });
-      navigate('/payments');
-      return;
-    }
-    // If we're in navigation mode and there are more payments, go to next
-    if (showNavigation && response?.payments && response.payments.length > 0) {
-      const nextPayment = response.payments[0]; // Get the first payment from the updated list
-      navigate(`/payments/${nextPayment.id}?nav=true`);
-    } else {
-      navigate(-1);
-    }
+    handleNext();
   };
 
   const handleProcess = async () => {
@@ -424,30 +385,7 @@ const PaymentDetailPage: React.FC = () => {
     if (!payment) return;
     await markAsProcessed(payment.id, invoiceReceived, paymentAmount, reason);
     setIsProcessDialogOpen(false);
-    // Refresh payments list and get the response
-    const response = await fetchPayments(1, 10, true, filterOptions);
-    // If we're in navigation mode and there are no more payments, go to payments page
-    if (showNavigation && (!response?.payments || response.payments.length === 0)) {
-      // Clear all filters and navigate to payments page
-      setFilterOptions({
-        status: ['pending', 'approved', 'rejected', 'processed', 'query_raised'],
-        dateRange: { start: null, end: null },
-        vendor: null,
-        company: null,
-        companyList: null,
-        overdueInvoices: false,
-        hasAccountsQuery: false,
-      });
-      navigate('/payments');
-      return;
-    }
-    // If we're in navigation mode and there are more payments, go to next
-    if (showNavigation && response?.payments && response.payments.length > 0) {
-      const nextPayment = response.payments[0]; // Get the first payment from the updated list
-      navigate(`/payments/${nextPayment.id}?nav=true`);
-    } else {
-      navigate(-1);
-    }
+    handleNext();
   };
 
   const handleQuery = () => {
@@ -458,30 +396,7 @@ const PaymentDetailPage: React.FC = () => {
     if (!user || !payment) return;
     await raiseQuery(payment.id, user, query);
     setIsQueryDialogOpen(false);
-    // Refresh payments list and get the response
-    const response = await fetchPayments(1, 10, true, filterOptions);
-    // If we're in navigation mode and there are no more payments, go to payments page
-    if (showNavigation && (!response?.payments || response.payments.length === 0)) {
-      // Clear all filters and navigate to payments page
-      setFilterOptions({
-        status: ['pending', 'approved', 'rejected', 'processed', 'query_raised'],
-        dateRange: { start: null, end: null },
-        vendor: null,
-        company: null,
-        companyList: null,
-        overdueInvoices: false,
-        hasAccountsQuery: false,
-      });
-      navigate('/payments');
-      return;
-    }
-    // If we're in navigation mode and there are more payments, go to next
-    if (showNavigation && response?.payments && response.payments.length > 0) {
-      const nextPayment = response.payments[0]; // Get the first payment from the updated list
-      navigate(`/payments/${nextPayment.id}?nav=true`);
-    } else {
-      navigate(-1);
-    }
+    handleNext();
   };
 
   const handleAccountsQuery = () => {
@@ -492,30 +407,7 @@ const PaymentDetailPage: React.FC = () => {
     if (!user || !payment) return;
     await raiseAccountsQuery(payment.id, user, query);
     setIsAccountsQueryDialogOpen(false);
-    // Refresh payments list and get the response
-    const response = await fetchPayments(1, 10, true, filterOptions);
-    // If we're in navigation mode and there are no more payments, go to payments page
-    if (showNavigation && (!response?.payments || response.payments.length === 0)) {
-      // Clear all filters and navigate to payments page
-      setFilterOptions({
-        status: ['pending', 'approved', 'rejected', 'processed', 'query_raised'],
-        dateRange: { start: null, end: null },
-        vendor: null,
-        company: null,
-        companyList: null,
-        overdueInvoices: false,
-        hasAccountsQuery: false,
-      });
-      navigate('/payments');
-      return;
-    }
-    // If we're in navigation mode and there are more payments, go to next
-    if (showNavigation && response?.payments && response.payments.length > 0) {
-      const nextPayment = response.payments[0]; // Get the first payment from the updated list
-      navigate(`/payments/${nextPayment.id}?nav=true`);
-    } else {
-      navigate(-1);
-    }
+    handleNext();
   };
 
   const handleUpdate = async () => {
@@ -525,12 +417,7 @@ const PaymentDetailPage: React.FC = () => {
       status: 'pending',
     });
     setIsEditing(false);
-    if (showNavigation && currentPaymentIndex < payments.length - 1) {
-      const nextPayment = payments[currentPaymentIndex + 1];
-      navigate(`/payments/${nextPayment.id}?nav=true`);
-    } else {
-      navigate(-1);
-    }
+    handleNext();
   };
 
   const handleMarkInvoiceReceived = async () => {
@@ -540,15 +427,10 @@ const PaymentDetailPage: React.FC = () => {
     ) {
       const success = await markInvoiceReceived(payment.id);
       if (success) {
-        toast.success('Invoice marked as received successfully');
-        if (showNavigation && currentPaymentIndex < payments.length - 1) {
-          const nextPayment = payments[currentPaymentIndex + 1];
-          navigate(`/payments/${nextPayment.id}?nav=true`);
-        } else {
-          navigate(-1);
-        }
+        showSuccessToast('Invoice marked as received successfully');
+        handleNext();
       } else {
-        toast.error('Failed to mark invoice as received');
+        showErrorToast('Failed to mark invoice as received');
       }
     }
   };
@@ -563,16 +445,11 @@ const PaymentDetailPage: React.FC = () => {
 
       if (error) throw error;
 
-      toast.success('Payment verified successfully');
-      if (showNavigation && currentPaymentIndex < payments.length - 1) {
-        const nextPayment = payments[currentPaymentIndex + 1];
-        navigate(`/payments/${nextPayment.id}?nav=true`);
-      } else {
-        navigate(-1);
-      }
+      showSuccessToast('Payment verified successfully');
+      handleNext();
     } catch (error) {
       console.error('Error verifying payment:', error);
-      toast.error('Failed to verify payment');
+      showErrorToast('Failed to verify payment');
     }
   };
 
@@ -638,14 +515,14 @@ const PaymentDetailPage: React.FC = () => {
 
   const handleFileView = async (attachment: any) => {
     if (!isOnline) {
-      toast.error(
+      showErrorToast(
         'No internet connection. Please check your connection and try again.'
       );
       return;
     }
 
     if (!signedUrls[attachment.id]) {
-      toast.error(
+      showErrorToast(
         'File URL is not available. Please try again later.'
       );
       return;
@@ -654,7 +531,7 @@ const PaymentDetailPage: React.FC = () => {
     try {
       const response = await fetch(signedUrls[attachment.id]);
       if (!response.ok) {
-        toast.error('File not found. Please try again later.');
+        showErrorToast('File not found. Please try again later.');
         return;
       }
 
@@ -676,7 +553,7 @@ const PaymentDetailPage: React.FC = () => {
       }
     } catch (error) {
       console.error('Error accessing file:', error);
-      toast.error('Error accessing file. Please try again later.');
+      showErrorToast('Error accessing file. Please try again later.');
     }
   };
 

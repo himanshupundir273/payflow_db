@@ -20,7 +20,7 @@ const PaymentStatusBadge: React.FC<PaymentStatusBadgeProps> = ({ status }) => {
     case 'processed':
       return <Badge variant="primary">Processed</Badge>;
     case 'query_raised':
-      return <Badge variant="warning">Query Raised</Badge>;
+      return <Badge className='text-center' variant="warning">Query Raised</Badge>;
     case 'accounts_approved':
       return <Badge variant="success">Accounts Approved</Badge>;
     default:

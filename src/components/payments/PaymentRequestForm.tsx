@@ -191,9 +191,7 @@ const validationSchema = Yup.object().shape({
     .oneOf(['low', 'medium', 'high'], 'Please select a valid urgency level'),
 });
 
-const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
-  editingPaymentId,
-}) => {
+const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentId }) => {
   const { user } = useAuthStore();
   const { addPayment, updatePayment } = usePaymentStore();
   const navigate = useNavigate();
@@ -382,7 +380,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
     subcategoryId: editingPaymentData ? JSON.parse(editingPaymentData).subcategoryId : null,
     categoryName: editingPaymentData ? JSON.parse(editingPaymentData).categoryName : '',
     subcategoryName: editingPaymentData ? JSON.parse(editingPaymentData).subcategoryName : '',
-    urgencyLevel: editingPaymentData ? JSON.parse(editingPaymentData).urgencyLevel : 'normal',
+    urgencyLevel: editingPaymentData ? JSON.parse(editingPaymentData).urgencyLevel : '',
   };
 
 
@@ -467,7 +465,22 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
         }
         showSuccessToast('Payment updated successfully');
         localStorage.removeItem('editingPaymentData');
-        navigate('/payments');
+        // Custom redirect for query-raised payments
+        if (isQueryPayment && user?.role === 'user') {
+          // Fetch if there are still query-raised payments for this user
+          const { data: remainingQueries, error } = await supabase
+            .from('payments')
+            .select('id')
+            .eq('requested_by', user.id)
+            .eq('status', 'query_raised');
+          if (!error && remainingQueries && remainingQueries.length > 0) {
+            navigate('/dashboard/queries');
+          } else {
+            navigate('/dashboard');
+          }
+        } else {
+          navigate('/payments');
+        }
       } else {
         console.log('Submitting payment data:', paymentData);
         // Create new payment
@@ -482,7 +495,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
         }
 
         showSuccessToast('Payment request submitted');
-        navigate('/payments');
+        navigate(-1);
       }
     } catch (error) {
       console.error('Error submitting payment request:', error);
@@ -620,8 +633,28 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
   return (
     <div className="max-w-2xl mx-auto my-8 animate-fade-in">
       <Card
-        title={isQueryPayment ? 'Update Payment' : 'Submit Payment Request'}
+        // Remove the title prop, we'll render the header manually
       >
+        {/* Header with title and close button */}
+        <div className="flex items-center justify-between mb-4 border-b border-gray-200 pb-1">
+          <h2 className="text-xl font-bold text-gray-900">
+            {(editingPaymentId || isQueryPayment) ? 'Update Payment' : 'Submit Payment Request'}
+          </h2>
+          <button
+            type="button"
+            aria-label="Close"
+            className="text-red-400 hover:text-red-600 hover:bg-red-100 focus:outline-none p-1.5 rounded-full transition-colors"
+            onClick={() => {
+              if (location.pathname.includes('/new')) {
+                navigate('/dashboard');
+              } else {
+                navigate(-1);
+              }
+            }}
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
         <Formik
           initialValues={initialValues}
           validationSchema={validationSchema}
@@ -1455,6 +1488,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({
                           : 'border-gray-300'
                           } shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 bg-white`}
                       >
+                        <option value="" disabled>Select urgency level</option>
                         <option value="medium">Medium</option>
                         <option value="low">Low</option>
                         <option value="high">High</option>
