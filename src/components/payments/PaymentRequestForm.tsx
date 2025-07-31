@@ -302,6 +302,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
     setVendors(updatedVendors);
     setFilteredVendors(updatedVendors);
     setFieldValue('vendorName', newVendor.name);
+    setFieldValue('vendorId', newVendor.id);
     setFieldValue('accountNumber', newVendor.accountNumber);
     setFieldValue('ifscCode', newVendor.ifscCode);
   };
