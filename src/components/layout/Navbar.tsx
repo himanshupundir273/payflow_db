@@ -13,9 +13,11 @@ import {
   LayoutDashboard,
   Download,
   Calendar,
+  MessageCircle,
 } from 'lucide-react';
 import Button from '../ui/Button';
 import ChangePasswordDialog from '../auth/ChangePasswordDialog';
+import Chatbot from '../chatbot/Chatbot';
 
 const roleNames: Record<UserRole, string> = {
   user: 'Employee',
@@ -30,6 +32,7 @@ const Navbar: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isChatbotOpen, setIsChatbotOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -121,6 +124,17 @@ const Navbar: React.FC = () => {
                     >
                       CMS
                     </Link>
+                  )}
+
+                  {user.role === 'admin' && (
+                    <button
+                      onClick={() => setIsChatbotOpen(!isChatbotOpen)}
+                      className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md flex items-center transition-all duration-200 hover:scale-105 relative group"
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2 group-hover:animate-pulse" />
+                      AI Assistant
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    </button>
                   )}
                 </div>
               )}
@@ -251,6 +265,20 @@ const Navbar: React.FC = () => {
                     CMS
                   </Link>
                 )}
+
+                {user.role === 'admin' && (
+                  <button
+                    onClick={() => {
+                      setIsChatbotOpen(!isChatbotOpen);
+                      setIsMenuOpen(false);
+                    }}
+                    className="block w-full text-left px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md flex items-center relative"
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    AI Assistant
+                    <span className="absolute top-2 right-2 w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                  </button>
+                )}
                 {user.role === 'user' && (
                   <Link
                     to="/scheduled-payments"
@@ -307,6 +335,11 @@ const Navbar: React.FC = () => {
       <ChangePasswordDialog
         isOpen={isChangePasswordOpen}
         onClose={() => setIsChangePasswordOpen(false)}
+      />
+
+      <Chatbot
+        isOpen={isChatbotOpen}
+        onToggle={() => setIsChatbotOpen(!isChatbotOpen)}
       />
     </>
   );
