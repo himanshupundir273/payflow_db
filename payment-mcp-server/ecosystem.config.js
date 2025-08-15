@@ -4,7 +4,7 @@ module.exports = {
     script: 'src/index.ts',
     instances: 'max',
     exec_mode: 'cluster',
-    interpreter: 'node',
+    interpreter: 'ts-node',
     env: {
       NODE_ENV: 'production',
       PORT: 3001
