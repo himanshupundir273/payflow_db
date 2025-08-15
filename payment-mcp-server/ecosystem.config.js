@@ -1,7 +1,7 @@
 module.exports = {
   apps: [{
     name: 'payflow-mcp-server',
-    script: 'dist/index.js',
+    script: 'src/index.ts',
     instances: 'max',
     exec_mode: 'cluster',
     env: {
