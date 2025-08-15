@@ -1,8 +1,8 @@
 module.exports = {
   apps: [{
     name: 'payflow-mcp-server',
-    script: 'tsx',
-    args: 'src/index.ts',
+    script: 'npm',
+    args: 'run dev',
     instances: 1,
     autorestart: true,
     watch: false,
