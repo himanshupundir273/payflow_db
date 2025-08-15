@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "MCP Server for Payment Management Chatbot with Gemini LLM Integration",
   "main": "src/index.ts",
-  "type": "module",
   "scripts": {
     "build": "tsc",
     "start": "node src/index.ts",
