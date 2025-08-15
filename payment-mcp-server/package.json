@@ -2,10 +2,10 @@
   "name": "payment-management-mcp-server",
   "version": "1.0.0",
   "description": "MCP Server for Payment Management Chatbot with Gemini LLM Integration",
-  "main": "dist/index.js",
+  "main": "src/index.ts",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node src/index.ts",
     "dev": "tsx watch src/index.ts",
     "test": "jest",
     "lint": "eslint src/**/*.ts",
