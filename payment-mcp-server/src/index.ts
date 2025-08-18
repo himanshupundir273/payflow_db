@@ -46,7 +46,7 @@ class MCPServer {
     
     // CORS configuration
     const corsOptions = {
-      origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5174'],
+      origin: ['http://localhost:5174' , 'https://www.payment.hindcab.com'],
       credentials: true,
       optionsSuccessStatus: 200
     };
