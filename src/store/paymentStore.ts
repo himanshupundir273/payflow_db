@@ -40,6 +40,8 @@ const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
     p.accounts_verification_status === 'pending'
   ).length;
 
+  const postponed = payments.filter(p => p.status === 'postponed').length;
+
   // Calculate overdue advance invoices
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -93,7 +95,8 @@ const calculateDashboardStats = (payments: PaymentRow[]): DashboardStats => {
     totalPaymentToInitiate,
     netFundAvailable: 0, // Will be set by getFundStats
     dayId: '', // Will be set by getFundStats
-    pendingAccountsVerifications
+    pendingAccountsVerifications,
+    postponed
   };
 };
 
@@ -142,6 +145,7 @@ const transformSinglePayment = async (row: PaymentRow): Promise<PaymentRequest> 
     categoryId: row.category_id || undefined,
     subcategoryId: row.subcategory_id || undefined,
     urgencyLevel: row.urgency_level || 'normal',
+    postponeDate: row.postpone_date || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     amountChangeReason: row.amount_change_reason || undefined,
@@ -878,6 +882,107 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     if (!result) {
       set({ isLoading: false });
     }
+  },
+
+  postponePayment: async (id: string, approver: User, postponeDays: number) => {
+    set({ isLoading: true });
+
+    const result = await withNetworkCheck(async () => {
+      try {
+        // Calculate the postpone date
+        const postponeDate = new Date();
+        postponeDate.setDate(postponeDate.getDate() + postponeDays);
+
+        const { data, error } = await supabase
+          .from('payments')
+          .update({
+            status: 'postponed',
+            // approved_by: approver.id,
+            postpone_date: postponeDate.toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) {
+          handleSupabaseError(error);
+          return false;
+        }
+
+        const transformedPayment = await transformSinglePayment(data);
+
+        set(state => ({
+          payments: state.payments.map(payment =>
+            payment.id === id ? transformedPayment : payment
+          ),
+          filteredPayments: state.filteredPayments.map(payment =>
+            payment.id === id ? transformedPayment : payment
+          ),
+          isLoading: false
+        }));
+
+        showSuccessToast(`Payment postponed for ${postponeDays} days`);
+        return true;
+      } catch (error) {
+        console.error('Error postponing payment:', error);
+        return false;
+      }
+    }, 'Failed to postpone payment. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+    }
+
+    return result || false;
+  },
+
+  moveToPending: async (id: string, approver: User) => {
+    set({ isLoading: true });
+
+    const result = await withNetworkCheck(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('payments')
+          .update({
+            status: 'pending',
+            approved_by: null, // Remove approval since it's going back to pending
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) {
+          handleSupabaseError(error);
+          return false;
+        }
+
+        const transformedPayment = await transformSinglePayment(data);
+
+        set(state => ({
+          payments: state.payments.map(payment =>
+            payment.id === id ? transformedPayment : payment
+          ),
+          filteredPayments: state.filteredPayments.map(payment =>
+            payment.id === id ? transformedPayment : payment
+          ),
+          isLoading: false
+        }));
+
+        showSuccessToast('Payment moved back to pending status');
+        return true;
+      } catch (error) {
+        console.error('Error moving payment to pending:', error);
+        return false;
+      }
+    }, 'Failed to move payment to pending. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+    }
+
+    return result || false;
   },
 
   bulkApprovePayments: async (ids: string[], approver: User) => {
@@ -1727,13 +1832,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             totalPaymentToInitiate: 0,
             netFundAvailable: 0,
             dayId: '',
-            pendingAccountsVerifications: 0
+            pendingAccountsVerifications: 0,
+          postponed: 0
           }),
           totalFundAvailable,
           totalPaymentToInitiate: state.dashboardStats?.totalPaymentToInitiate || 0,
           netFundAvailable: totalFundAvailable - (state.dashboardStats?.totalPaymentToInitiate || 0),
           dayId: currentDayId,
-          pendingAccountsVerifications: state.dashboardStats?.pendingAccountsVerifications || 0
+          pendingAccountsVerifications: state.dashboardStats?.pendingAccountsVerifications || 0,
+          postponed: state.dashboardStats?.postponed || 0
         }
       }));
     } catch (error) {
@@ -1809,13 +1916,15 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             totalPaymentToInitiate: 0,
             netFundAvailable: 0,
             dayId: '',
-            pendingAccountsVerifications: 0
+            pendingAccountsVerifications: 0,
+            postponed: 0
           }),
           totalFundAvailable,
           totalPaymentToInitiate,
           netFundAvailable: totalFundAvailable - totalPaymentToInitiate,
           dayId: currentDayId,
-          pendingAccountsVerifications: state.dashboardStats?.pendingAccountsVerifications || 0
+          pendingAccountsVerifications: state.dashboardStats?.pendingAccountsVerifications || 0,
+          postponed: state.dashboardStats?.postponed || 0
         }
       }));
     } catch (error) {
@@ -2032,6 +2141,105 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     }
 
     console.log('[bulkAccountsVerifyPayments] Done:', result);
+    return result;
+  },
+
+  deletePayment: async (id: string) => {
+    set({ isLoading: true });
+
+    const result = await withNetworkCheck(async () => {
+      try {
+        // First check if the payment is processed
+        const { data: payment, error: fetchError } = await supabase
+          .from('payments')
+          .select('status')
+          .eq('id', id)
+          .single();
+
+        if (fetchError) {
+          handleSupabaseError(fetchError);
+          return false;
+        }
+
+        if (payment.status !== 'processed') {
+          showErrorToast('Only processed payments can be deleted');
+          return false;
+        }
+
+        // Delete the payment
+        const { error: deleteError } = await supabase
+          .from('payments')
+          .delete()
+          .eq('id', id);
+
+        if (deleteError) {
+          handleSupabaseError(deleteError);
+          return false;
+        }
+
+        // Remove from local state
+        set(state => ({
+          payments: state.payments.filter(p => p.id !== id),
+          filteredPayments: state.filteredPayments.filter(p => p.id !== id),
+          isLoading: false
+        }));
+
+        showSuccessToast('Payment deleted successfully');
+        return true;
+      } catch (error) {
+        console.error('Error deleting payment:', error);
+        showErrorToast('Failed to delete payment');
+        return false;
+      }
+    }, 'Failed to delete payment. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+      return false;
+    }
+
+    return result;
+  },
+
+  syncPostponedPayments: async () => {
+    set({ isLoading: true });
+
+    const result = await withNetworkCheck(async () => {
+      try {
+        // Call the edge function to reactivate postponed payments
+        const { data, error } = await supabase.functions.invoke('reactivate-postponed-payments');
+
+        if (error) {
+          console.error('Error calling edge function:', error);
+          showErrorToast('Failed to sync postponed payments');
+          return false;
+        }
+
+        if (data && data.count > 0) {
+          showSuccessToast(`Successfully reactivated ${data.count} postponed payments`);
+          
+          // Refresh the payments data to reflect the changes
+          await get().fetchDashboardPayments();
+          await get().fetchDashboardStats();
+          
+          return true;
+        } else {
+          showSuccessToast('No postponed payments to reactivate');
+          return true;
+        }
+      } catch (error) {
+        console.error('Error syncing postponed payments:', error);
+        showErrorToast('Failed to sync postponed payments');
+        return false;
+      }
+    }, 'Failed to sync postponed payments. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+      return false;
+    }
+
+    set({ isLoading: false });
     return result;
   }
 

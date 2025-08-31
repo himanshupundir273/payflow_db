@@ -31,14 +31,14 @@ const validationSchema = Yup.object().shape({
     .matches(/^[0-9]+$/, 'Account number must contain only numbers')
     .min(8, 'Account number must be at least 8 digits')
     .max(20, 'Account number must not exceed 20 digits'),
-  ifscCode: Yup.string()
-    .required('IFSC code is required')
-    .matches(
-      /^[A-Z]{4}0[A-Z0-9]{6}$/,
-      'Invalid IFSC code format (e.g., HDFC0001234)'
-    )
-    .length(11, 'IFSC code must be exactly 11 characters')
-    .transform((value) => value?.trim().toUpperCase()),
+  // ifscCode: Yup.string()
+  //   .required('IFSC code is required')
+  //   .matches(
+  //     /^[A-Z]{4}0[A-Z0-9]{6}$/,
+  //     'Invalid IFSC code format (e.g., HDFC0001234)'
+  //   )
+  //   .length(11, 'IFSC code must be exactly 11 characters')
+  //   .transform((value) => value?.trim().toUpperCase()),
 });
 
 const AddVendorDialog: React.FC<AddVendorDialogProps> = ({
@@ -139,7 +139,7 @@ const AddVendorDialog: React.FC<AddVendorDialogProps> = ({
           id: data.id,
           name: data.name,
           accountNumber: data.account_number,
-          ifscCode: data.ifsc_code,
+          ifscCode: data.ifsc_code || '',
           addedBy: data.added_by,
           status: data.status,
           createdAt: data.created_at,
@@ -250,7 +250,7 @@ const AddVendorDialog: React.FC<AddVendorDialogProps> = ({
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    IFSC Code <span className="text-error-500">*</span>
+                    IFSC Code / Swift Code <span className="text-error-500">*</span>
                   </label>
                   <Field
                     as={Input}
@@ -258,7 +258,7 @@ const AddVendorDialog: React.FC<AddVendorDialogProps> = ({
                     placeholder="e.g., HDFC0001234"
                     error={touched.ifscCode && errors.ifscCode}
                     fullWidth
-                    required
+                    // required
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       const upperValue = e.target.value.toUpperCase();
                       setFieldValue('ifscCode', upperValue);

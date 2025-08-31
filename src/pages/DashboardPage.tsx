@@ -14,6 +14,7 @@ import {
   ArrowRight,
   AlertCircle,
   Loader2,
+  Clock,
 } from 'lucide-react';
 import PaymentTable from '../components/payments/PaymentTable';
 import { checkNetworkConnection } from '../lib/network';
@@ -34,6 +35,7 @@ const DashboardPage: React.FC = () => {
     filterOverdueAdvanceInvoices,
     filterAccountsQueries,
     resetFilterOptions,
+    syncPostponedPayments,
   } = usePaymentStore();
   const navigate = useNavigate();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -86,7 +88,8 @@ const DashboardPage: React.FC = () => {
     overdueAdvanceInvoices: 0,
     totalAmount: 0,
     pendingAmount: 0,
-    pendingAccountsVerifications: 0
+    pendingAccountsVerifications: 0,
+    postponed: 0
   };
 
   const recentPayments = useMemo(() => {
@@ -155,6 +158,14 @@ const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleSyncPostponed = async () => {
+    try {
+      await syncPostponedPayments();
+    } catch (error) {
+      console.error('Error syncing postponed payments:', error);
+    }
+  };
+
   const handleCardClick = (cardNumber: number) => {
     switch (user?.role) {
       case 'user':
@@ -190,6 +201,9 @@ const DashboardPage: React.FC = () => {
             break;
           case 4: // Total Activity
             navigate('/dashboard/total-activity');
+            break;
+          case 5: // Postponed Payments
+            navigate('/dashboard/postponed');
             break;
         }
         break;
@@ -464,6 +478,58 @@ const DashboardPage: React.FC = () => {
             </div>
           </div>
         </Card>
+
+        {/* Postponed Payments Card - Admin only */}
+        {user?.role === 'admin' && (
+          <Card
+            className="animate-fade-in delay-400 cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => handleCardClick(5)}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500">
+                  Postponed Payments
+                </p>
+                <p className="mt-1 text-3xl font-semibold text-gray-900">
+                  {statsLoading ? (
+                    <div className="h-8 w-16 bg-gray-200 rounded animate-pulse" />
+                  ) : (
+                    stats.postponed
+                  )}
+                </p>
+              </div>
+              <div className="p-3 bg-secondary-100 rounded-full">
+                <Clock className="h-6 w-6 text-secondary-600" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-sm text-gray-500">
+                {statsLoading ? (
+                  <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+                ) : (
+                  stats.postponed > 0 ? (
+                    <div className="flex items-center justify-between">
+                      <span>Click to sync and reactivate</span>
+                      <Button
+                        size="xs"
+                        variant="secondary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSyncPostponed();
+                        }}
+                        className="ml-2"
+                      >
+                        Sync Now
+                      </Button>
+                    </div>
+                  ) : (
+                    'No postponed payments'
+                  )
+                )}
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
       {user?.role !== 'user' && <FundStats />}
       

@@ -243,7 +243,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
             id: vendor.id,
             name: vendor.name,
             accountNumber: vendor.account_number,
-            ifscCode: vendor.ifsc_code,
+            ifscCode: vendor.ifsc_code || '',
             addedBy: vendor.added_by,
             status: vendor.status,
             createdAt: vendor.created_at,
@@ -304,7 +304,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
     setFieldValue('vendorName', newVendor.name);
     setFieldValue('vendorId', newVendor.id);
     setFieldValue('accountNumber', newVendor.accountNumber);
-    setFieldValue('ifscCode', newVendor.ifscCode);
+    setFieldValue('ifscCode', newVendor?.ifscCode || '');
   };
 
   const handleCategoryAdded = (newCategory: Category, setFieldValue: Function) => {
@@ -681,7 +681,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
 
                     if (!error && vendor) {
                       setFieldValue('accountNumber', vendor.account_number);
-                      setFieldValue('ifscCode', vendor.ifsc_code);
+                      setFieldValue('ifscCode', vendor.ifsc_code || '');
                     }
                   } catch (error) {
                     console.error('Error fetching vendor details:', error);
@@ -786,7 +786,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
             const handleVendorSelect = (vendor: Vendor) => {
               setFieldValue('vendorName', vendor.name);
               setFieldValue('accountNumber', vendor.accountNumber);
-              setFieldValue('ifscCode', vendor.ifscCode);
+              setFieldValue('ifscCode', vendor.ifscCode || '');
               setFieldValue('vendorId', vendor.id);
               setShowVendorSuggestions(false);
             };
@@ -1073,7 +1073,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
 
                     <div className="flex flex-col">
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        IFSC Code{' '}
+                        IFSC Code/ Swift Code{' '}
                         <span className="text-gray-400">(Auto-filled)</span>
                       </label>
                       <Field

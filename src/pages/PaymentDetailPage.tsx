@@ -51,6 +51,9 @@ const PaymentDetailPage: React.FC = () => {
     raiseAccountsQuery,
     updatePayment,
     markInvoiceReceived,
+    deletePayment,
+    postponePayment,
+    moveToPending,
     isLoading,
     payments,
     fetchPayments,
@@ -450,6 +453,73 @@ const PaymentDetailPage: React.FC = () => {
     } catch (error) {
       console.error('Error verifying payment:', error);
       showErrorToast('Failed to verify payment');
+    }
+  };
+
+  const handleDeletePayment = async () => {
+    if (!payment) return;
+    if (window.confirm("Are you sure you want to delete this processed payment? This action cannot be undone.")) {
+      try {
+        const success = await deletePayment(payment.id);
+        if (success) {
+          showSuccessToast('Payment deleted successfully');
+          // Navigate back to the previous page or payments list
+          navigate('/payments');
+        }
+      } catch (error) {
+        console.error('Error deleting payment:', error);
+        showErrorToast('Failed to delete payment');
+      }
+    }
+  };
+
+  const handlePostpone = () => {
+    if (!payment) return;
+    const days = prompt('Enter number of days to postpone (1-365):');
+    if (days && !isNaN(parseInt(days)) && parseInt(days) > 0 && parseInt(days) <= 365) {
+      handlePostponeSubmit(parseInt(days));
+    } else if (days !== null) {
+      showErrorToast('Please enter a valid number of days (1-365)');
+    }
+  };
+
+  const handlePostponeSubmit = async (days: number) => {
+    if (!payment || !user) return;
+    try {
+      const success = await postponePayment(payment.id, user, days);
+      if (success) {
+        showSuccessToast(`Payment postponed for ${days} days`);
+        // Refresh the payment data
+        const updatedPayment = await fetchPaymentById(payment.id);
+        if (updatedPayment) {
+          setPayment(updatedPayment);
+        }
+      }
+    } catch (error) {
+      console.error('Error postponing payment:', error);
+      showErrorToast('Failed to postpone payment');
+    }
+  };
+
+  const handleMoveToPending = async () => {
+    if (!payment || !user) return;
+    
+    if (window.confirm("Are you sure you want to move this approved payment back to pending status? This will require re-approval.")) {
+      try {
+        // Call the moveToPending function from the store
+        const success = await moveToPending(payment.id, user);
+        if (success) {
+          showSuccessToast('Payment moved back to pending status');
+          // Refresh the payment data
+          const updatedPayment = await fetchPaymentById(payment.id);
+          if (updatedPayment) {
+            setPayment(updatedPayment);
+          }
+        }
+      } catch (error) {
+        console.error('Error moving payment to pending:', error);
+        showErrorToast('Failed to move payment to pending');
+      }
     }
   };
 
@@ -1123,12 +1193,34 @@ const PaymentDetailPage: React.FC = () => {
                     Query
                   </Button>
                   <Button
+                    variant="secondary"
+                    icon={<Clock className="h-5 w-5" />}
+                    onClick={handlePostpone}
+                    className="w-full sm:w-auto"
+                  >
+                    Postpone
+                  </Button>
+                  <Button
                     variant="success"
                     icon={<FileCheck className="h-5 w-5" />}
                     onClick={handleApprove}
                     className="w-full sm:w-auto"
                   >
                     Approve
+                  </Button>
+                </div>
+              )}
+
+              {/* Admin actions for approved payments */}
+              {user?.role === 'admin' && payment.status === 'postponed' && (
+                <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 mt-6">
+                  <Button
+                    variant="secondary"
+                    icon={<ArrowLeft className="h-5 w-5" />}
+                    onClick={handleMoveToPending}
+                    className="w-full sm:w-auto"
+                  >
+                    Move to Pending
                   </Button>
                 </div>
               )}
@@ -1196,6 +1288,20 @@ const PaymentDetailPage: React.FC = () => {
                     </Button>
                   </div>
                 )}
+
+              {/* Delete processed payment - Accounts role only */}
+              {user?.role === 'accounts' && payment.status === 'processed' && (
+                <div className="flex justify-end mt-6">
+                  <Button
+                    variant="danger"
+                    icon={<FileX className="h-5 w-5" />}
+                    onClick={handleDeletePayment}
+                    className="w-full sm:w-auto"
+                  >
+                    Delete Payment
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </Card>

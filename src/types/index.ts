@@ -59,7 +59,7 @@ export interface PaymentRequest {
   companyBranch: string;
   bankName: string;
   paymentMode: 'net_banking' | 'upi';
-  status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised';
+  status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised' | 'postponed';
   queryDetails?: string;
   accountsQuery?: string;
   accountsVerificationStatus?: 'pending' | 'verified' | 'rejected';
@@ -75,6 +75,7 @@ export interface PaymentRequest {
   categoryId?: string | null;
   subcategoryId?: string | null;
   urgencyLevel: 'low' | 'medium' | 'high';
+  postponeDate?: string | null;
   createdAt: string;
   updatedAt: string;
   amountChangeReason?: string;
@@ -111,6 +112,7 @@ export interface DashboardStats {
   netFundAvailable: number;
   dayId: string;
   pendingAccountsVerifications: number;
+  postponed: number;
 }
 
 interface PaginationOptions {
@@ -154,6 +156,8 @@ export interface PaymentState {
   addPayment: (payment: Omit<PaymentRequest, 'id' | 'serialNumber' | 'status' | 'createdAt' | 'updatedAt' | 'approvedBy'>) => Promise<PaymentRequest | null>;
   approvePayment: (id: string, approver: User, paymentAmount?: number, reason?: string) => Promise<boolean>;
   rejectPayment: (id: string, approver: User) => Promise<void>;
+  postponePayment: (id: string, approver: User, postponeDays: number) => Promise<boolean>;
+  moveToPending: (id: string, approver: User) => Promise<boolean>;
   bulkApprovePayments: (ids: string[], approver: User) => Promise<{ success: string[]; failed: string[] }>;
   bulkRejectPayments: (ids: string[], approver: User) => Promise<{ success: string[]; failed: string[] }>;
   bulkProcessPayments: (ids: string[]) => Promise<{ success: string[]; failed: string[] }>;
@@ -164,6 +168,7 @@ export interface PaymentState {
   raiseQuery: (id: string, approver: User, query: string) => Promise<boolean>;
   raiseAccountsQuery: (id: string, accountsUser: User, query: string) => Promise<boolean>;
   accountsVerifyPayment: (id: string) => Promise<boolean>;
+  deletePayment: (id: string) => Promise<boolean>;
   setFilterOptions: (options: Partial<FilterOptions>) => void;
   setSearchTerm: (searchTerm: string) => void;
   applyFilters: () => void;
@@ -172,4 +177,5 @@ export interface PaymentState {
   updatePayment: (id: string, paymentData: Partial<PaymentRequest>) => Promise<boolean>;
   filterOverdueAdvanceInvoices: () => void;
   filterAccountsQueries: () => void;
+  syncPostponedPayments: () => Promise<boolean>;
 }
