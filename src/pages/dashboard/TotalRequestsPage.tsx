@@ -20,6 +20,7 @@ const TotalRequestsPage: React.FC = () => {
     setFilterOptions,
     setSearchTerm,
     resetFilterOptions,
+    deletePayment,
   } = usePaymentStore();
   const [localSearchTerm, setLocalSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -105,6 +106,22 @@ const TotalRequestsPage: React.FC = () => {
     resetFilterOptions();
   };
 
+  const handleDeletePayment = async (paymentId: string) => {
+    if (window.confirm("Are you sure you want to delete this processed payment? This action cannot be undone.")) {
+      try {
+        // Call the delete function from props if available
+        if (deletePayment) {
+          await deletePayment(paymentId);
+        } else {
+          // If no delete function provided, show error
+          console.error("Delete function not provided");
+        }
+      } catch (error) {
+        console.error("Error deleting payment:", error);
+      }
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
@@ -188,6 +205,7 @@ const TotalRequestsPage: React.FC = () => {
         payments={filteredPayments}
         isLoading={isLoading}
         showActions={false}
+        onDeletePayment={handleDeletePayment}
         serverPagination={{
           currentPage: pagination.page,
           pageSize: pagination.pageSize,

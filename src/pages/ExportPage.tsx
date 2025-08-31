@@ -191,30 +191,31 @@ const ExportPage: React.FC = () => {
         const paymentBills = billsMap[payment.id] || [];
         const firstBill = paymentBills[0];
 
+        // Prepare values for concatenation
+        const transactionType = payment.advanceDetails?.replace(/_/g, " ") || "N/A";
+        const beneficiaryCode = vendorInfo?.ifscCode || "N/A";
+        const beneficiaryAccountNumber = vendorInfo?.accountNumber || "N/A";
+        const transactionAmount = payment.paymentAmount || 0;
+        const beneficiaryName = payment.vendorName || "N/A";
+        const customerReferenceNumber = firstBill?.bill_number || "N/A";
+        const valueDate = formatDate(payment.date);
+        const ifscCode = vendorInfo?.ifscCode || "N/A";
+        const beneficiaryEmail = "atlantatelecables@gmail.com"; // Default email
+
+        // Create concatenated string
+        const concatenatedValue = `${transactionType},${beneficiaryCode},${beneficiaryAccountNumber},${transactionAmount},${beneficiaryName},${customerReferenceNumber},${valueDate},${ifscCode},${beneficiaryEmail}`;
+
         return {
-          "SR. No.": index + 1,
-          Date: formatDate(payment.date),
-          "Vendor Name": payment.vendorName || "N/A",
-          "Account Number": vendorInfo?.accountNumber || "N/A",
-          "IFSC Code": vendorInfo?.ifscCode || "N/A",
-          "Total Outstanding": payment.totalOutstanding || 0,
-          "Payment Amount": payment.paymentAmount || 0,
-          "Balance Amount": payment.balanceAmount || 0,
-          "Item Description": payment.itemDescription || "N/A",
-          "Bill No.": firstBill?.bill_number || "N/A",
-          "Bill Date": firstBill?.bill_date
-            ? formatDate(firstBill.bill_date)
-            : "N/A",
-          "Requested By": payment.requestedBy?.name || "N/A",
-          "Approved By": payment.approvedBy?.name || "N/A",
-          "Company Name": payment.companyName || "N/A",
-          Status: payment.status
-            ? payment.status.charAt(0).toUpperCase() + payment.status.slice(1)
-            : "N/A",
-          "Processed Date":
-            payment.status === "processed"
-              ? formatDate(payment.updatedAt)
-              : "N/A",
+          "Transaction Type": transactionType,
+          "Beneficiary Code": beneficiaryCode,
+          "Beneficiary Account Number": beneficiaryAccountNumber,
+          "Transaction Amount": transactionAmount,
+          "Beneficiary Name": beneficiaryName,
+          "Customer Reference Number": customerReferenceNumber,
+          "VALUE DATE": valueDate,
+          "IFSC Code": ifscCode,
+          "Beneficiary email id": beneficiaryEmail,
+          "COPY FROM HERE": concatenatedValue,
         };
       });
 

@@ -85,7 +85,7 @@ export interface Database {
           company_branch: string
           bank_name: string
           payment_mode: 'net_banking' | 'upi'
-          status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
+          status: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised' | 'postponed'
           query_details: string | null
           accounts_query: string | null
           accounts_verification_status: 'pending' | 'verified' | 'rejected'
@@ -101,6 +101,7 @@ export interface Database {
           category_id: string | null
           subcategory_id: string | null
           urgency_level: 'low' | 'medium' | 'high'
+          postpone_date: string | null
           created_at: string
           updated_at: string
           amount_change_reason: string | null
@@ -122,7 +123,7 @@ export interface Database {
           company_branch: string
           bank_name: string
           payment_mode?: 'net_banking' | 'upi'
-          status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
+          status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised' | 'postponed'
           query_details?: string | null
           accounts_query?: string | null
           accounts_verification_status?: 'pending' | 'verified' | 'rejected'
@@ -138,6 +139,7 @@ export interface Database {
           category_id?: string | null
           subcategory_id?: string | null
           urgency_level?: 'low' | 'medium' | 'high'
+          postpone_date?: string | null
           created_at?: string
           updated_at?: string
           amount_change_reason?: string | null
@@ -159,7 +161,7 @@ export interface Database {
           company_branch?: string
           bank_name?: string
           payment_mode?: 'net_banking' | 'upi'
-          status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised'
+          status?: 'pending' | 'approved' | 'rejected' | 'processed' | 'query_raised' | 'postponed'
           query_details?: string | null
           accounts_query?: string | null
           accounts_verification_status?: 'pending' | 'verified' | 'rejected'
@@ -175,6 +177,7 @@ export interface Database {
           category_id?: string | null
           subcategory_id?: string | null
           urgency_level?: 'low' | 'medium' | 'high'
+          postpone_date?: string | null
           created_at?: string
           updated_at?: string
           amount_change_reason?: string | null

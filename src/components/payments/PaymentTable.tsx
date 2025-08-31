@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { PaymentRequest } from "../../types";
 import { format } from "date-fns";
@@ -23,8 +23,10 @@ import QueryDialog from "./QueryDialog";
 import AccountsQueryDialog from "./AccountsQueryDialog";
 import ProcessPaymentDialog from "./ProcessPaymentDialog";
 import ApprovePaymentDialog from "./ApprovePaymentDialog";
+import PostponeDialog from "./PostponeDialog";
 import { useAuthStore } from "../../store/authStore";
 import Tooltip from "../../components/ui/Tooltip";
+import { supabase } from "../../lib/supabase";
 
 interface PaymentTableProps {
   payments: PaymentRequest[];
@@ -49,6 +51,9 @@ interface PaymentTableProps {
   onAccountsQuery?: (id: string, query: string) => void;
   onMarkInvoiceReceived?: (id: string) => void;
   onVerify?: (id: string) => void;
+  onDeletePayment?: (id: string) => Promise<void>;
+  onPostpone?: (id: string, days: number) => Promise<boolean>;
+  onMoveToPending?: (id: string) => Promise<boolean>;
   enableBulkSelection?: boolean;
   maxSelections?: number;
   hideControls?: boolean;
@@ -88,6 +93,9 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   onBulkMarkInvoiceRecieved,
   onBulkAccountsVerify,
   onVerify,
+  onDeletePayment,
+  onPostpone,
+  onMoveToPending,
   enableBulkSelection = false,
   maxSelections = 0,
   hideControls = false,
@@ -97,6 +105,62 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   const [searchParams] = useSearchParams();
   const pageType = searchParams.get("type") ?? "query";
   const navigate = useNavigate();
+  const [categoryNames, setCategoryNames] = useState<Record<string, string>>({});
+  const [subcategoryNames, setSubcategoryNames] = useState<Record<string, string>>({});
+
+  // Fetch category and subcategory names for payments
+  const fetchCategoryNames = async () => {
+    if (!payments || payments.length === 0) return;
+
+    const categoryIds = new Set<string>();
+    const subcategoryIds = new Set<string>();
+
+    payments.forEach(payment => {
+      if (payment.categoryId) categoryIds.add(payment.categoryId);
+      if (payment.subcategoryId) subcategoryIds.add(payment.subcategoryId);
+    });
+
+    try {
+      // Fetch category names
+      if (categoryIds.size > 0) {
+        const { data: categories, error: categoryError } = await supabase
+          .from('categories')
+          .select('id, name')
+          .in('id', Array.from(categoryIds));
+
+        if (!categoryError && categories) {
+          const categoryMap: Record<string, string> = {};
+          categories.forEach((cat: any) => {
+            categoryMap[cat.id] = cat.name;
+          });
+          setCategoryNames(categoryMap);
+        }
+      }
+
+      // Fetch subcategory names
+      if (subcategoryIds.size > 0) {
+        const { data: subcategories, error: subcategoryError } = await supabase
+          .from('subcategories')
+          .select('id, name')
+          .in('id', Array.from(subcategoryIds));
+
+        if (!subcategoryError && subcategories) {
+          const subcategoryMap: Record<string, string> = {};
+          subcategories.forEach((sub: any) => {
+            subcategoryMap[sub.id] = sub.name;
+          });
+          setSubcategoryNames(subcategoryMap);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching category names:', error);
+    }
+  };
+
+  // Fetch category names when payments change
+  useEffect(() => {
+    fetchCategoryNames();
+  }, [payments]);
 
   // Use server-side search when available, otherwise use local search
   const [localSearchTerm, setLocalSearchTerm] = useState("");
@@ -165,6 +229,14 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     isOpen: false,
     paymentId: "",
     currentPaymentAmount: 0,
+  });
+
+  const [postponeDialog, setPostponeDialog] = useState<{
+    isOpen: boolean;
+    paymentId: string;
+  }>({
+    isOpen: false,
+    paymentId: "",
   });
 
   // Bulk selection state
@@ -253,8 +325,10 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
         case "vendorName":
           comparison = a.vendorName.localeCompare(b.vendorName);
           break;
-        case "advanceDetails":
-          comparison = a.advanceDetails.localeCompare(b.advanceDetails);
+        case "itemDescription":
+          const aCategoryName = a.categoryId && categoryNames[a.categoryId] ? categoryNames[a.categoryId] : a.itemDescription;
+          const bCategoryName = b.categoryId && categoryNames[b.categoryId] ? categoryNames[b.categoryId] : b.itemDescription;
+          comparison = aCategoryName.localeCompare(bCategoryName);
           break;
         case "paymentAmount":
           comparison = a.paymentAmount - b.paymentAmount;
@@ -395,6 +469,25 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     setQueryDialog((prev) => ({ ...prev, paymentId: id, isOpen: true }));
   };
 
+  const handlePostpone = (id: string) => {
+    setPostponeDialog((prev) => ({ ...prev, paymentId: id, isOpen: true }));
+  };
+
+  const handleMoveToPending = async (id: string) => {
+    if (window.confirm("Are you sure you want to move this approved payment back to pending status? This will require re-approval.")) {
+      try {
+        // Call the moveToPending function from the store
+        if (onMoveToPending) {
+          await onMoveToPending(id);
+        } else {
+          console.error("Move to pending function not provided");
+        }
+      } catch (error) {
+        console.error("Error moving payment to pending:", error);
+      }
+    }
+  };
+
   const handleAccountsQuery = (id: string) => {
     setAccountsQueryDialog((prev) => ({
       ...prev,
@@ -448,15 +541,16 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="font-medium">Payment Against:</span>
+              <span className="font-medium">Category:</span>
               <div className="flex flex-col items-end max-w-[65%]">
                 <span className="font-semibold text-right leading-tight text-gray-900">
-                  {payment.advanceDetails
-                    .replace(/_/g, " ")
-                    .replace(/\b\w/g, (l) => l.toUpperCase())}
+                  {payment.categoryId && categoryNames[payment.categoryId] 
+                    ? categoryNames[payment.categoryId] 
+                    : payment.itemDescription}
                 </span>
               </div>
             </div>
+
           </div>
         </div>
       ),
@@ -500,6 +594,22 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
       }
       return newSelection;
     });
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (window.confirm("Are you sure you want to delete this processed payment? This action cannot be undone.")) {
+      try {
+        // Call the delete function from props if available
+        if (onDeletePayment) {
+          await onDeletePayment(paymentId);
+        } else {
+          // If no delete function provided, show error
+          console.error("Delete function not provided");
+        }
+      } catch (error) {
+        console.error("Error deleting payment:", error);
+      }
+    }
   };
 
   const handleBulkApprove = () => {
@@ -1082,14 +1192,14 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                     </div>
 
                     <div className="flex justify-between items-start">
-                      <span className="text-gray-500 font-medium">
-                        Payment Against:
+                      <span className="font-medium">
+                        Category:
                       </span>
                       <div className="flex flex-col items-end max-w-[65%]">
                         <span className="font-semibold text-right leading-tight text-gray-900">
-                          {payment.advanceDetails
-                            .replace(/_/g, " ")
-                            .replace(/\b\w/g, (l) => l.toUpperCase())}
+                          {payment.categoryId && categoryNames[payment.categoryId] 
+                            ? categoryNames[payment.categoryId] 
+                            : payment.itemDescription}
                         </span>
                       </div>
                     </div>
@@ -1314,13 +1424,14 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                       <th
                         scope="col"
                         className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer w-[220px]"
-                        onClick={() => handleSort("advanceDetails")}
+                        onClick={() => handleSort("itemDescription")}
                       >
                         <div className="flex items-center space-x-1">
-                          <span className="break-words whitespace-normal">PAY AGAINST</span>
-                          {getSortIcon("advanceDetails")}
+                          <span className="break-words whitespace-normal">CATEGORY</span>
+                          {getSortIcon("itemDescription")}
                         </div>
                       </th>
+
                       <th
                         scope="col"
                         className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
@@ -1410,11 +1521,13 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                             </div>
                             <Tooltip
                               content={
-                                payment.urgencyLevel === "high"
+                                `${payment.urgencyLevel === "high"
                                   ? "High Priority - Requires immediate attention and processing"
                                   : payment.urgencyLevel === "medium"
                                   ? "Medium Priority - Standard processing timeline"
-                                  : "Low Priority - Routine processing, no urgency"
+                                  : "Low Priority - Routine processing, no urgency"}\n\nPay Against: ${payment.advanceDetails
+                                    .replace(/_/g, " ")
+                                    .replace(/\b\w/g, (l) => l.toUpperCase())}`
                               }
                             >
                               <div
@@ -1443,9 +1556,9 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         <td className="px-3 py-4 text-sm text-gray-900 w-[220px]">
                           <div className="w-full flex items-start gap-2">
                             <span className="break-words whitespace-normal">
-                              {payment.advanceDetails
-                                .replace(/_/g, " ")
-                                .replace(/\b\w/g, (l) => l.toUpperCase())}
+                              {payment.categoryId && categoryNames[payment.categoryId] 
+                                ? categoryNames[payment.categoryId] 
+                                : payment.itemDescription}
                             </span>
                             {payment.accountsVerificationStatus ===
                               "verified" &&
@@ -1460,6 +1573,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                               )}
                           </div>
                         </td>
+
                         <td className="px-3 py-4 text-sm text-gray-900">
                           {payment.paymentAmount.toLocaleString("en-IN", {
                             style: "currency",
@@ -1520,6 +1634,16 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                     </Button>
                                     <Button
                                       size="xs"
+                                      variant="secondary"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handlePostpone(payment.id);
+                                      }}
+                                    >
+                                      Postpone
+                                    </Button>
+                                    <Button
+                                      size="xs"
                                       variant="danger"
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -1558,6 +1682,23 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                         Query
                                       </Button>
                                     )}
+                                  </>
+                                )}
+
+                              {/* Admin actions for approved payments */}
+                              {payment.status === "postponed" &&
+                                user?.role === "admin" && (
+                                  <>
+                                    <Button
+                                      size="xs"
+                                      variant="secondary"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMoveToPending(payment.id);
+                                      }}
+                                    >
+                                      Move to Pending
+                                    </Button>
                                   </>
                                 )}
                               {payment.status === "processed" &&
@@ -1605,6 +1746,19 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                                       Verify
                                     </Button>
                                   </>
+                                )}
+                              {user?.role === "accounts" &&
+                                payment.status === "processed" && (
+                                  <Button
+                                    size="xs"
+                                    variant="danger"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeletePayment(payment.id);
+                                    }}
+                                  >
+                                    Delete
+                                  </Button>
                                 )}
                             </div>
                           </td>
@@ -1833,6 +1987,18 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
         onClose={() => setApproveDialog((prev) => ({ ...prev, isOpen: false }))}
         onSubmit={handleApproveSubmit}
         currentPaymentAmount={approveDialog.currentPaymentAmount}
+      />
+
+      <PostponeDialog
+        isOpen={postponeDialog.isOpen}
+        onClose={() => setPostponeDialog((prev) => ({ ...prev, isOpen: false }))}
+        onPostpone={async (days) => {
+          if (onPostpone && postponeDialog.paymentId) {
+            await onPostpone(postponeDialog.paymentId, days);
+            setPostponeDialog((prev) => ({ ...prev, isOpen: false }));
+          }
+        }}
+        isLoading={isLoading}
       />
     </>
   );

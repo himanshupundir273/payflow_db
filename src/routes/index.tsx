@@ -20,6 +20,7 @@ import PendingApprovalPage from '../pages/dashboard/PendingApprovalPage';
 import ApprovedPage from '../pages/dashboard/ApprovedPage';
 import TotalActivityPage from '../pages/dashboard/TotalActivityPage';
 import VerificationPage from '../pages/dashboard/VerificationsPage';
+import PostponedPaymentsPage from '../pages/dashboard/postponed';
 
 // CMS Pages
 import Home from '../pages/cms/home';
@@ -122,6 +123,15 @@ export const AppRoutes = () => {
         element={
           <ProtectedRoute>
             <TotalActivityPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/dashboard/postponed"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <PostponedPaymentsPage />
           </ProtectedRoute>
         }
       />
