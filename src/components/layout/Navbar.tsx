@@ -126,7 +126,7 @@ const Navbar: React.FC = () => {
                     </Link>
                   )}
 
-                  {user.role === 'admin' && (
+                  { (user.role === 'admin' || user.role === 'accounts') && (
                     <button
                       onClick={() => setIsChatbotOpen(!isChatbotOpen)}
                       className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md flex items-center transition-all duration-200 hover:scale-105 relative group"
