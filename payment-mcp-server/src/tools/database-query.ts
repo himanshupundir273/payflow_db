@@ -2,7 +2,7 @@ import { MCPToolDefinition, MCPResponse, QueryParams, QueryIntent } from '../typ
 import { DatabaseManager } from '../config/database.js';
 import { GeminiManager } from '../utils/gemini.js';
 import { logger, auditLogger, performanceLogger } from '../utils/logger.js';
-import { SecurityValidator } from '../utils/security-validator';
+import { SecurityValidator } from '../utils/security-validator.js';
 
 export class DatabaseQueryTool {
   static definition: MCPToolDefinition = {
@@ -533,8 +533,16 @@ export class DatabaseQueryTool {
       const dbManager = DatabaseManager.getInstance();
       
       switch (intent.type) {
-        case 'PAYMENT_STATUS_QUERY':
-          return await dbManager.executeQuery('Show me all pending payments');
+        case 'PAYMENT_STATUS_QUERY': {
+          // Use explicit status from intent if present; otherwise do not force 'pending'
+          const statusFilter = intent.filters?.status && intent.filters.status.length > 0
+            ? intent.filters.status[0]
+            : null;
+          const prompt = statusFilter
+            ? `Show me all payments with status ${statusFilter}`
+            : 'Show me recent payments by status';
+          return await dbManager.executeQuery(prompt);
+        }
         case 'VENDOR_ANALYTICS':
           return await dbManager.executeQuery('Show me vendor information');
         case 'FINANCIAL_REPORT':
@@ -719,7 +727,7 @@ export class DatabaseQueryTool {
     switch (intent.type) {
       case 'PAYMENT_STATUS_QUERY':
         summary.statusBreakdown = this.groupBy(results, 'status');
-        summary.totalAmount = results.reduce((sum: number, r: any) => sum + (r.payment_amount || 0), 0);
+        summary.totalAmount = results.reduce((sum: number, r: any) => sum + (r.payment_amount || r.amount || 0), 0);
         summary.averageAmount = summary.totalAmount / results.length;
         break;
       
@@ -883,12 +891,11 @@ DATA SUMMARY:
 - Total amount: ₹${context.dataSummary.totalAmount?.toLocaleString() || 'N/A'}
 - Status breakdown: ${context.dataSummary.statusBreakdown ? Object.entries(context.dataSummary.statusBreakdown).map(([k, v]) => `${k}: ${v}`).join(', ') : 'N/A'}
 
-RECENT CHAT CONTEXT:
-${context.recentChat.map(msg => `${msg.role}: ${msg.content}`).join('\n')}
-
 RESPONSE REQUIREMENTS:
-1. Generate a natural, helpful response (2-3 sentences)
-2. Determine if user needs:
+1. Generate a straight forward response (2-3 sentences),mention all data summary provided to you.
+2. Don't mention followups like "would you like me to do this?", don't do it.
+3. Don't mention that you don't know something or don't have access to, work with the given context
+4. Determine if user needs:
    - Charts (for data visualization)
    - CSV export (for data analysis)
    - PDF export (for reports)
@@ -900,7 +907,7 @@ For chart data, you can leave chartData as an empty array [] - the system will g
 
 Expected JSON structure:
 {
-  "message": "Your natural response here",
+  "message": "DATA SUMMARY and Your natural response here",
   "uiRequirements": {
     "needsChart": true/false,
     "needsCSV": true/false,
@@ -911,6 +918,17 @@ Expected JSON structure:
   }
 }
 `;
+
+      // Ensure Gemini is initialized; if not, attempt lazy initialization and fall back gracefully
+      if (!geminiManager.isReady()) {
+        try {
+          await geminiManager.initialize();
+          logger.info('Gemini AI initialized lazily for LLM response generation');
+        } catch (initError) {
+          logger.warn('Gemini AI not available for LLM response; using fallback:', initError);
+          throw initError;
+        }
+      }
 
       const response = await geminiManager.processQuery(prompt);
       

@@ -25,7 +25,7 @@ export class GeminiManager {
       }
 
       this.genAI = new GoogleGenerativeAI(apiKey);
-      this.model = this.genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
 
       // Test the connection
       await this.testConnection();
@@ -59,7 +59,9 @@ export class GeminiManager {
     try {
       const startTime = Date.now();
       
-      const prompt = this.buildPrompt(query, context);
+      // const prompt = this.buildPrompt(query, context);
+      const prompt = query;
+      // console.log("prompt",prompt);
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
@@ -308,44 +310,75 @@ export class GeminiManager {
     chatHistory?: any[]
   ): Promise<string> {
     try {
-      // Build comprehensive context for the LLM
+      // Simple context for easy retrieval
       const contextPrompt = `
         You are an expert SQL developer for a payment management system. Generate precise SQL queries based on user requests.
-
+        Today's date is ${new Date().toLocaleDateString()}
         DATABASE SCHEMA:
         ${JSON.stringify(databaseSchema, null, 2)}
-
-        USER CONTEXT:
-        - Role: ${userContext.role || 'admin'}
-        - Company: ${userContext.company || 'N/A'}
-        - Permissions: ${userContext.permissions || 'full_access'}
-
-        CHAT HISTORY (if available):
-        ${chatHistory ? JSON.stringify(chatHistory.slice(-5), null, 2) : 'No previous context'}
 
         USER REQUEST: "${userQuery}"
 
         REQUIREMENTS:
-        1. Generate ONLY a valid PostgreSQL SELECT query (READ-ONLY)
-        2. Use proper table aliases (p for payments, u for users, v for vendors, etc.)
-        3. Include relevant JOINs to get complete information
-        4. Add appropriate WHERE clauses for filtering
-        5. Use ORDER BY for meaningful results
-        6. Limit results to 100 rows maximum for performance
-        7. NEVER include INSERT, UPDATE, DELETE, or any modification operations
-        8. NEVER include SQL comments (-- or /* */)
-        9. Return ONLY the raw SQL query, no explanations, no markdown
+        1. Just return which table is required
+        2. Also include what filter keyword is required and in what column. If more than one filter is required than leave blank don't write the name of the month in the filter
+        3. For payment status related filter put it in payment_status, only put one or leave blank
+        4. Include the start and end dates as required by query
+        5. Use order for meaningful results
+        6. include select somewhere but never ever include words that are and related to CREATE, INSERT, UPDATE, DELETE, or any modification operations
+        7. Don't use markdowns, Return in the example format
+        8. Strictly follow the example, DONT include any parameters by yourself
+        9. Only one select query is required
+        10. if time/date/month is not sepcified then leave the gte and lte blank
 
         EXAMPLE OUTPUT FORMAT:
-        SELECT p.id, p.vendor_name, p.payment_amount, p.status, u.name as requested_by
-        FROM payments p
-        LEFT JOIN users u ON p.requested_by = u.id
-        WHERE p.status = 'pending'
-        ORDER BY p.date DESC
-        LIMIT 100;
+        SELECT
+        {
+          "table": "payments",
+          "column_name": "item_description",
+          "filter": "copper",
+          "payment_status": "processed"
+          "gte": "YYYY-MM-DD",
+          "lte": "YYYY-MM-DD"
+        }
 
-        IMPORTANT: Return ONLY the SQL query, nothing else.
-      `;
+       `;
+      // Build comprehensive context for the LLM
+      // const contextPrompt = `
+      //   You are an expert SQL developer for a payment management system. Generate precise SQL queries based on user requests.
+
+      //   DATABASE SCHEMA:
+      //   ${JSON.stringify(databaseSchema, null, 2)}
+
+      //   USER CONTEXT:
+      //   - Role: ${userContext.role || 'admin'}
+      //   - Company: ${userContext.company || 'N/A'}
+      //   - Permissions: ${userContext.permissions || 'full_access'}
+
+      //   USER REQUEST: "${userQuery}"
+
+      //   REQUIREMENTS:
+      //   1. Generate ONLY a valid PostgreSQL SELECT query (READ-ONLY)
+      //   2. Use proper table aliases (p for payments, u for users, v for vendors, etc.)
+      //   3. Include relevant JOINs to get complete information
+      //   4. Add appropriate WHERE clauses for filtering
+      //   5. Use ORDER BY for meaningful results
+      //   6. Limit results to 100 rows maximum for performance
+      //   7. NEVER include CREATE, INSERT, UPDATE, DELETE, or any modification operations
+      //   8. NEVER include SQL comments (-- or /* */)
+      //   9. Return ONLY the raw SQL query, no explanations, no markdown
+      //   10. Don't include any word that contains "create" or "update" in its spelling, for example:- created_at f.created_at, updated_at, f.updated_at
+
+      //   EXAMPLE OUTPUT FORMAT:
+      //   SELECT p.id, p.vendor_name, p.payment_amount, p.status, u.name as requested_by
+      //   FROM payments p
+      //   LEFT JOIN users u ON p.requested_by = u.id
+      //   WHERE p.status = 'pending'
+      //   ORDER BY p.date DESC
+      //   LIMIT 100;
+
+      //   IMPORTANT: Return ONLY the SQL query, nothing else.
+      // `;
 
       const response = await this.processQuery(contextPrompt);
       let sqlQuery = response.text.trim();
