@@ -46,7 +46,7 @@ class MCPServer {
     
     // CORS configuration
     const corsOptions = {
-      origin: ['http://localhost:5174' , 'https://www.payment.hindcab.com'],
+      origin: ['http://localhost:5174' , 'https://www.payment.hindcab.com', 'http://localhost:5173'],
       credentials: true,
       optionsSuccessStatus: 200
     };
@@ -350,7 +350,28 @@ class MCPServer {
         }
 
         // Process with Gemini AI (including full conversation history for context)
-        const aiResponse = await this.geminiManager.processQuery(message, JSON.stringify(conversation_history));
+        // Ensure Gemini is initialized; if not, attempt lazy initialization and fall back gracefully
+        let aiText = '';
+        try {
+          if (!this.geminiManager.isReady()) {
+            try {
+              await this.geminiManager.initialize();
+              logger.info('Gemini AI initialized lazily for chat request');
+            } catch (initError) {
+              logger.warn('Gemini AI not available; proceeding without AI response:', initError);
+            }
+          }
+
+          if (this.geminiManager.isReady()) {
+            const aiResponse = await this.geminiManager.processQuery(message, JSON.stringify(conversation_history));
+            aiText = aiResponse.text;
+          } else {
+            aiText = 'AI response is currently unavailable. Showing data results only.';
+          }
+        } catch (aiError) {
+          logger.warn('AI processing failed; continuing without AI response:', aiError);
+          aiText = 'AI response failed. Showing data results only.';
+        }
 
         // If the message seems like a data query, also execute it
         let dataResult = null;
@@ -367,7 +388,7 @@ class MCPServer {
 
         res.json({
           type: 'chat_response',
-          message: aiResponse.text,
+          message: aiText,
           data: dataResult,
           timestamp: new Date().toISOString(),
           sessionId: session_id

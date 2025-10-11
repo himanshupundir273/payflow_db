@@ -1,9 +1,9 @@
 import winston from 'winston';
 import path from 'path';
-
+// import * as fs from 'fs';
 // Create logs directory if it doesn't exist
 const fs = require('fs');
-const logDir = './logs';
+const logDir = './logs'; //for prod
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
