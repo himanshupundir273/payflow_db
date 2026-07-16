@@ -7,26 +7,18 @@ import { Wallet, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { showErrorToast } from '../../lib/toast';
 
 const LoginForm: React.FC = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
   const { login } = useAuthStore();
   const navigate = useNavigate();
-
-  const isValidEmail = (email: string) => {
-    return email.includes('@');
-  };
-
-  const getEmailFromUsername = (input: string) => {
-    return isValidEmail(input) ? input : `${input}@atlantatelecables.com`;
-  };
   
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!username || !password) {
+    if (!email || !password) {
       showErrorToast('Please enter your credentials');
       return;
     }
@@ -34,8 +26,7 @@ const LoginForm: React.FC = () => {
     setIsLoading(true);
     
     try {
-      const emailToUse = getEmailFromUsername(username);
-      const success = await login(emailToUse, password);
+      const success = await login(email.trim(), password);
       
       if (success) {
         navigate('/dashboard');
@@ -72,17 +63,20 @@ const LoginForm: React.FC = () => {
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
               <Input
-                label="Username or Email"
-                id="username"
-                type="text"
-                autoComplete="username"
+                label="Email"
+                id="email"
+                type="email"
+                autoComplete="email"
                 required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 fullWidth
                 leftIcon={<Mail className="h-5 w-5 text-gray-400" />}
-                placeholder="Enter username or email"
+                placeholder="Enter your email address"
               />
+              <p className="mt-2 text-xs text-gray-500">
+                Use the same email address that was created in User Management.
+              </p>
             </div>
 
             <div>

@@ -144,22 +144,6 @@ const ExportPage: React.FC = () => {
         .select("id, account_number, ifsc_code")
         .in("id", vendorIds);
 
-      // Fetch bills for all payments
-      const paymentIds = searchedPayments.map((p) => p.id);
-      const { data: billsData, error: billsError } = await supabase
-        .from("bills")
-        .select("*")
-        .in("payment_id", paymentIds);
-      if (billsError) {
-        console.error("Error fetching bills:", billsError);
-      }
-      // Map bills by payment_id
-      const billsMap = (billsData || []).reduce((acc, bill) => {
-        if (!acc[bill.payment_id]) acc[bill.payment_id] = [];
-        acc[bill.payment_id].push(bill);
-        return acc;
-      }, {} as Record<string, any[]>);
-
       // Create a map of vendor details for quick lookup
       const vendorDetails =
         vendors?.reduce((acc, vendor) => {
@@ -187,35 +171,23 @@ const ExportPage: React.FC = () => {
         const vendorInfo = payment.vendorId
           ? vendorDetails[payment.vendorId]
           : null;
-        // Get first bill for this payment
-        const paymentBills = billsMap[payment.id] || [];
-        const firstBill = paymentBills[0];
 
-        // Prepare values for concatenation
-        const transactionType = payment.advanceDetails?.replace(/_/g, " ") || "N/A";
-        const beneficiaryCode = vendorInfo?.ifscCode || "N/A";
-        const beneficiaryAccountNumber = vendorInfo?.accountNumber || "N/A";
-        const transactionAmount = payment.paymentAmount || 0;
-        const beneficiaryName = payment.vendorName || "N/A";
-        const customerReferenceNumber = firstBill?.bill_number || "N/A";
-        const valueDate = formatDate(payment.date);
+        const accountNumber = vendorInfo?.accountNumber || "N/A";
         const ifscCode = vendorInfo?.ifscCode || "N/A";
-        const beneficiaryEmail = "atlantatelecables@gmail.com"; // Default email
-
-        // Create concatenated string
-        const concatenatedValue = `${transactionType},${beneficiaryCode},${beneficiaryAccountNumber},${transactionAmount},${beneficiaryName},${customerReferenceNumber},${valueDate},${ifscCode},${beneficiaryEmail}`;
+        const amount = payment.paymentAmount || 0;
+        const valueDate = formatDate(payment.date);
 
         return {
-          "Transaction Type": transactionType,
-          "Beneficiary Code": beneficiaryCode,
-          "Beneficiary Account Number": beneficiaryAccountNumber,
-          "Transaction Amount": transactionAmount,
-          "Beneficiary Name": beneficiaryName,
-          "Customer Reference Number": customerReferenceNumber,
-          "VALUE DATE": valueDate,
-          "IFSC Code": ifscCode,
-          "Beneficiary email id": beneficiaryEmail,
-          "COPY FROM HERE": concatenatedValue,
+          SNO: index + 1,
+          COMP: payment.companyName || "N/A",
+          PARTY: payment.vendorName || "N/A",
+          ACCOUNTNO: accountNumber,
+          IFSC: ifscCode,
+          AMOUNT: amount,
+          DESCRIPION: payment.itemDescription || "N/A",
+          Remark: "",
+          "Requested by": payment.requestedBy?.name || "N/A",
+          "Value Date": valueDate,
         };
       });
 
