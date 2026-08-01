@@ -121,6 +121,8 @@ const transformSinglePayment = async (row: PaymentRow): Promise<PaymentRequest> 
     paymentAmount: row.payment_amount,
     balanceAmount: row.balance_amount,
     itemDescription: row.item_description,
+    department: row.department || undefined,
+    endUse: row.end_use || undefined,
     bills: [], // Empty - will be fetched on demand
     attachments: [], // Empty - will be fetched on demand
     requestedBy: requestedByUser.data!,
@@ -366,19 +368,39 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           const totalPages = Math.ceil((totalCount || 0) / currentPageSize);
           const offset = (currentPage - 1) * currentPageSize;
 
-          // Build the paginated query - ONLY payments table data
-          let query = supabase
-            .from('payments')
-            .select('*');
-
-          query = applyFiltersToQuery(query);
-
           // Apply sort options with proper column mapping
           const dbColumnName = getDbColumnName(currentSortOptions.field);
-          query = query.order(dbColumnName, { ascending: currentSortOptions.direction === 'asc' });
 
-          const { data: rows, error } = await query
-            .range(offset, offset + currentPageSize - 1);
+          // Supabase/PostgREST caps rows per request (default max_rows = 1000),
+          // so requests for more than that must be paged in batches and combined.
+          const SERVER_MAX_ROWS = 1000;
+          const rangeStart = offset;
+          const rangeEnd = offset + currentPageSize - 1;
+          const rows: any[] = [];
+          let error: any = null;
+
+          for (let batchStart = rangeStart; batchStart <= rangeEnd; batchStart += SERVER_MAX_ROWS) {
+            const batchEnd = Math.min(batchStart + SERVER_MAX_ROWS - 1, rangeEnd);
+
+            let batchQuery = supabase
+              .from('payments')
+              .select('*');
+            batchQuery = applyFiltersToQuery(batchQuery);
+            batchQuery = batchQuery.order(dbColumnName, { ascending: currentSortOptions.direction === 'asc' });
+
+            const { data: batchRows, error: batchError } = await batchQuery.range(batchStart, batchEnd);
+
+            if (batchError) {
+              error = batchError;
+              break;
+            }
+
+            if (!batchRows || batchRows.length === 0) break;
+            rows.push(...batchRows);
+
+            // Fewer rows than requested means we've reached the end of the result set
+            if (batchRows.length < (batchEnd - batchStart + 1)) break;
+          }
 
           if (error) {
             console.error('Error fetching payments:', error);
@@ -474,6 +496,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               paymentAmount: row.payment_amount,
               balanceAmount: row.balance_amount,
               itemDescription: row.item_description,
+    department: row.department || undefined,
+    endUse: row.end_use || undefined,
               bills: [], // Empty - will be fetched on demand
               attachments: [], // Empty - will be fetched on demand
               requestedBy: requestedByUser,
@@ -662,6 +686,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           payment_amount: paymentData.paymentAmount,
           balance_amount: paymentData.balanceAmount,
           item_description: paymentData.itemDescription,
+          department: paymentData.department,
+          end_use: paymentData.endUse,
           requested_by: user.id,
           company_name: paymentData.companyName,
           company_branch: paymentData.companyBranch,
@@ -1350,6 +1376,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             payment_amount: paymentData.paymentAmount,
             balance_amount: paymentData.balanceAmount,
             item_description: paymentData.itemDescription,
+            department: paymentData.department,
+            end_use: paymentData.endUse,
             company_name: paymentData.companyName,
             company_branch: paymentData.companyBranch,
             bank_name: paymentData.bankName,
@@ -1738,6 +1766,8 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               paymentAmount: row.payment_amount,
               balanceAmount: row.balance_amount,
               itemDescription: row.item_description,
+    department: row.department || undefined,
+    endUse: row.end_use || undefined,
               bills: [], // Empty for dashboard
               attachments: [], // Empty for dashboard
               requestedBy: requestedByUser,

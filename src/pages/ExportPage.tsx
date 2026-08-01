@@ -177,15 +177,29 @@ const ExportPage: React.FC = () => {
         const amount = payment.paymentAmount || 0;
         const valueDate = formatDate(payment.date);
 
+        const payAgainst = payment.advanceDetails
+          ? payment.advanceDetails.replace(/_/g, " ")
+          : "N/A";
+
+        const statusLabel = payment.status
+          ? payment.status
+              .replace(/_/g, " ")
+              .replace(/\b\w/g, (c) => c.toUpperCase())
+          : "N/A";
+
         return {
-          SNO: index + 1,
+          "SR NO": index + 1,
           COMP: payment.companyName || "N/A",
           PARTY: payment.vendorName || "N/A",
           ACCOUNTNO: accountNumber,
           IFSC: ifscCode,
           AMOUNT: amount,
+          "Tota O/s": payment.totalOutstanding || 0,
           DESCRIPION: payment.itemDescription || "N/A",
-          Remark: "",
+          Department: payment.department || "N/A",
+          "End Use": payment.endUse || "N/A",
+          "Pay Agst": payAgainst,
+          Status: statusLabel,
           "Requested by": payment.requestedBy?.name || "N/A",
           "Value Date": valueDate,
         };

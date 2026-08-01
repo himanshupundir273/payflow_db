@@ -48,6 +48,8 @@ interface FormValues {
   advanceDetails: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others';
   paymentAmount: string;
   itemDescription: string;
+  department: string;
+  endUse: string;
   bills: Bill[];
   attachments: Attachment[];
   companyName: string;
@@ -134,6 +136,8 @@ const validationSchema = Yup.object().shape({
       return !isNaN(number) && number > 0;
     }),
   itemDescription: Yup.string().required('Item description is required'),
+  department: Yup.string().optional(),
+  endUse: Yup.string().optional(),
   bills: Yup.array()
     .of(
       Yup.object().shape({
@@ -364,6 +368,8 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
     advanceDetails: editingPaymentData ? JSON.parse(editingPaymentData).advanceDetails : 'tax_invoice',
     paymentAmount: editingPaymentData ? JSON.parse(editingPaymentData).paymentAmount : '',
     itemDescription: editingPaymentData ? JSON.parse(editingPaymentData).itemDescription : '',
+    department: editingPaymentData ? JSON.parse(editingPaymentData).department : '',
+    endUse: editingPaymentData ? JSON.parse(editingPaymentData).endUse : '',
     bills: editingPaymentData ? JSON.parse(editingPaymentData).bills : [{ billNumber: '', billDate: '' }],
     attachments: editingPaymentData ? JSON.parse(editingPaymentData).attachments : [],
     companyName: editingPaymentData ? JSON.parse(editingPaymentData).companyName : '',
@@ -422,6 +428,8 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
         paymentAmount,
         balanceAmount,
         itemDescription: values.itemDescription,
+        department: values.department || null,
+        endUse: values.endUse || null,
         bills: values.bills.map((bill) => ({
           id: '',
           billNumber: bill.billNumber,
@@ -1724,6 +1732,32 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                         }
                         fullWidth
                         required
+                      />
+                    </div>
+
+                    <div className="flex flex-col">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Department
+                      </label>
+                      <Field
+                        as={Input}
+                        name="department"
+                        placeholder="Enter department"
+                        error={touched.department && errors.department}
+                        fullWidth
+                      />
+                    </div>
+
+                    <div className="flex flex-col">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        End Use
+                      </label>
+                      <Field
+                        as={Input}
+                        name="endUse"
+                        placeholder="Enter end use"
+                        error={touched.endUse && errors.endUse}
+                        fullWidth
                       />
                     </div>
 

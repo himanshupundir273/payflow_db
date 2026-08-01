@@ -536,6 +536,8 @@ const PaymentDetailPage: React.FC = () => {
       advanceDetails: payment.advanceDetails,
       paymentAmount: payment.paymentAmount.toString(),
       itemDescription: payment.itemDescription,
+      department: payment.department || '',
+      endUse: payment.endUse || '',
       bills: payment.bills.map((bill) => ({
         billNumber: bill.billNumber,
         billDate: format(new Date(bill.billDate), 'yyyy-MM-dd'),
@@ -824,6 +826,35 @@ const PaymentDetailPage: React.FC = () => {
                 </p>
               </div>
             </div>
+
+            {(payment.department || payment.endUse) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6">
+                {payment.department && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">
+                      Department
+                    </h3>
+                    <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+                      <p className="text-sm text-gray-900">
+                        {payment.department}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {payment.endUse && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-2">
+                      End Use
+                    </h3>
+                    <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+                      <p className="text-sm text-gray-900">
+                        {payment.endUse}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6">
               <div>

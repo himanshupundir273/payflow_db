@@ -51,6 +51,8 @@ export interface PaymentRequest {
   paymentAmount: number;
   balanceAmount: number;
   itemDescription: string;
+  department?: string | null;
+  endUse?: string | null;
   bills: Bill[];
   attachments: Attachment[];
   requestedBy: User;

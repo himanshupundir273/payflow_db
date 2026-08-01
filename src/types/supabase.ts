@@ -79,6 +79,8 @@ export interface Database {
           payment_amount: number
           balance_amount: number
           item_description: string
+          department: string | null
+          end_use: string | null
           requested_by: string
           approved_by: string | null
           company_name: string
@@ -117,6 +119,8 @@ export interface Database {
           payment_amount: number
           balance_amount: number
           item_description: string
+          department?: string | null
+          end_use?: string | null
           requested_by: string
           approved_by?: string | null
           company_name: string
@@ -155,6 +159,8 @@ export interface Database {
           payment_amount?: number
           balance_amount?: number
           item_description?: string
+          department?: string | null
+          end_use?: string | null
           requested_by?: string
           approved_by?: string | null
           company_name?: string
