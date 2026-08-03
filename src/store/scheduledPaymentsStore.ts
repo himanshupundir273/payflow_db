@@ -27,6 +27,8 @@ export interface ScheduledPayment {
   purchase_owner?: string | null;
   price_check_guaranteed_by?: string | null;
   item_description: string;
+  department?: string | null;
+  end_use?: string | null;
   lpr?: string | null;
   ioa?: string | null;
   cpp?: string | null;

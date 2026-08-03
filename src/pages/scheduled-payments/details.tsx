@@ -299,6 +299,35 @@ const ScheduledPaymentDetailsPage: React.FC = () => {
             </div>
           </div>
 
+          {(payment.department || payment.end_use) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6">
+              {payment.department && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">
+                    Department
+                  </h3>
+                  <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+                    <p className="text-sm text-gray-900">
+                      {payment.department}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {payment.end_use && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">
+                    End Use
+                  </h3>
+                  <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+                    <p className="text-sm text-gray-900">
+                      {payment.end_use}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6">
             <div>
               <h3 className="text-sm font-medium text-gray-500 mb-2">

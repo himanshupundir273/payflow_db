@@ -108,7 +108,7 @@ const Navbar: React.FC = () => {
                     </Link>
                   )}
 
-                  {user.role === 'accounts' && (
+                  {(user.role === 'accounts' || user.role === 'admin') && (
                     <Link
                       to="/export"
                       className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"
@@ -247,7 +247,7 @@ const Navbar: React.FC = () => {
                 >
                   Dashboard
                 </Link>
-                {user.role === 'accounts' && (
+                {(user.role === 'accounts' || user.role === 'admin') && (
                   <Link
                     to="/export"
                     className="block px-3 py-2 text-base font-medium text-gray-700 hover:text-primary-600 hover:bg-gray-50 rounded-md"

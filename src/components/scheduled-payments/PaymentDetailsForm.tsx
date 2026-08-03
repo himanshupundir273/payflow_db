@@ -409,6 +409,34 @@ const PaymentDetailsForm: React.FC<PaymentDetailsFormProps> = ({
           />
         </div>
 
+        {/* Department */}
+        <div className="flex flex-col">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Department
+          </label>
+          <Field
+            as={Input}
+            name="department"
+            placeholder="Enter department"
+            error={touched.department && errors.department}
+            fullWidth
+          />
+        </div>
+
+        {/* End Use */}
+        <div className="flex flex-col">
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            End Use
+          </label>
+          <Field
+            as={Input}
+            name="endUse"
+            placeholder="Enter end use"
+            error={touched.endUse && errors.endUse}
+            fullWidth
+          />
+        </div>
+
         {/* Optional fields */}
         <div className="flex flex-col">
           <label className="block text-sm font-medium text-gray-700 mb-1">

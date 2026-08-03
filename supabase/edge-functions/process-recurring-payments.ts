@@ -101,6 +101,8 @@ serve(async (req) => {
             p_payment_amount: sp.payment_amount,
             p_balance_amount: sp.balance_amount,
             p_item_description: sp.item_description,
+            p_department: sp.department || null,
+            p_end_use: sp.end_use || null,
             p_requested_by: sp.requested_by,
             p_company_name: sp.company_name,
             p_company_branch: sp.company_branch || '',

@@ -14,6 +14,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Minus,
+  Plus,
 } from "lucide-react";
 import Card from "../ui/Card";
 import Input from "../ui/Input";
@@ -244,6 +245,21 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     new Set()
   );
   const [showBulkActions, setShowBulkActions] = useState(false);
+
+  // Inline expand state (view details without navigating away)
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleExpandRow = (id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   // Determine if we're using server-side or client-side pagination
   const isServerPagination = !!serverPagination;
@@ -697,6 +713,93 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     );
   };
 
+  const renderExpandedDetails = (payment: PaymentRequest) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 bg-gray-50 rounded-lg p-4 text-sm">
+      <div>
+        <span className="text-gray-500">Item Description: </span>
+        <span className="font-medium text-gray-900">
+          {payment.itemDescription || "N/A"}
+        </span>
+      </div>
+      <div>
+        <span className="text-gray-500">Department: </span>
+        <span className="font-medium text-gray-900">
+          {payment.department || "N/A"}
+        </span>
+      </div>
+      <div>
+        <span className="text-gray-500">End Use: </span>
+        <span className="font-medium text-gray-900">
+          {payment.endUse || "N/A"}
+        </span>
+      </div>
+      <div>
+        <span className="text-gray-500">Pay Against: </span>
+        <span className="font-medium text-gray-900 capitalize">
+          {payment.advanceDetails?.replace(/_/g, " ") || "N/A"}
+        </span>
+      </div>
+      <div>
+        <span className="text-gray-500">Total Outstanding: </span>
+        <span className="font-medium text-gray-900">
+          {(payment.totalOutstanding || 0).toLocaleString("en-IN", {
+            style: "currency",
+            currency: "INR",
+            maximumFractionDigits: 0,
+          })}
+        </span>
+      </div>
+      <div>
+        <span className="text-gray-500">Balance Amount: </span>
+        <span className="font-medium text-gray-900">
+          {(payment.balanceAmount || 0).toLocaleString("en-IN", {
+            style: "currency",
+            currency: "INR",
+            maximumFractionDigits: 0,
+          })}
+        </span>
+      </div>
+      <div>
+        <span className="text-gray-500">Bank Name: </span>
+        <span className="font-medium text-gray-900">
+          {payment.bankName || "N/A"}
+        </span>
+      </div>
+      <div>
+        <span className="text-gray-500">Payment Mode: </span>
+        <span className="font-medium text-gray-900 capitalize">
+          {payment.paymentMode?.replace(/_/g, " ") || "N/A"}
+        </span>
+      </div>
+      <div>
+        <span className="text-gray-500">LPR: </span>
+        <span className="font-medium text-gray-900">
+          {payment.lpr || "N/A"}
+        </span>
+      </div>
+      {payment.bills && payment.bills.length > 0 && (
+        <div className="sm:col-span-2 lg:col-span-3">
+          <span className="text-gray-500">Bills: </span>
+          <span className="font-medium text-gray-900">
+            {payment.bills
+              .map((bill) => bill.billNumber)
+              .filter(Boolean)
+              .join(", ") || "N/A"}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+
+  // Base desktop columns: Details toggle, SR No, Date, Company, Vendor,
+  // Category, Amount, Status, Requested By
+  const desktopColumnCount =
+    9 +
+    (enableBulkSelection && (user?.role === "admin" || user?.role === "accounts")
+      ? 1
+      : 0) +
+    (showActions ? 1 : 0);
+
   if (isLoading) {
     return (
       <Card>
@@ -1096,6 +1199,25 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           {format(new Date(payment.date), "dd/MM/yyyy")}
                         </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpandRow(payment.id);
+                        }}
+                        className="flex-shrink-0 h-7 w-7 flex items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100"
+                        title={
+                          expandedRows.has(payment.id)
+                            ? "Hide details"
+                            : "View details"
+                        }
+                      >
+                        {expandedRows.has(payment.id) ? (
+                          <Minus className="h-4 w-4" />
+                        ) : (
+                          <Plus className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <div className="flex flex-col items-end gap-1">
@@ -1213,6 +1335,16 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                       </span>
                     </div>
                   </div>
+
+                  {/* Expanded inline details */}
+                  {expandedRows.has(payment.id) && (
+                    <div
+                      className="mt-4 pt-4 border-t border-gray-200"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {renderExpandedDetails(payment)}
+                    </div>
+                  )}
 
                   {/* Actions */}
                   {showActions && (
@@ -1387,6 +1519,12 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                         )}
                       <th
                         scope="col"
+                        className="px-1 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-8"
+                      >
+                        <span className="sr-only">Details</span>
+                      </th>
+                      <th
+                        scope="col"
                         className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer"
                         onClick={() => handleSort("serialNumber")}
                       >
@@ -1470,8 +1608,8 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {paginatedPayments.map((payment) => (
+                      <React.Fragment key={payment.id}>
                       <tr
-                        key={payment.id}
                         className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
                         onClick={() => handleRowClick(payment)}
                       >
@@ -1508,6 +1646,27 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                               />
                             </td>
                           )}
+                        <td
+                          className="px-1 py-4 text-sm w-8"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandRow(payment.id)}
+                            className="h-7 w-7 flex items-center justify-center rounded-full border border-gray-300 text-gray-600 hover:bg-gray-100"
+                            title={
+                              expandedRows.has(payment.id)
+                                ? "Hide details"
+                                : "View details"
+                            }
+                          >
+                            {expandedRows.has(payment.id) ? (
+                              <Minus className="h-4 w-4" />
+                            ) : (
+                              <Plus className="h-4 w-4" />
+                            )}
+                          </button>
+                        </td>
                         <td className="px-3 py-4 text-sm font-medium text-gray-900">
                           {payment.serialNumber}
                         </td>
@@ -1764,6 +1923,17 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           </td>
                         )}
                       </tr>
+                      {expandedRows.has(payment.id) && (
+                        <tr>
+                          <td
+                            colSpan={desktopColumnCount}
+                            className="px-3 py-4 bg-gray-50"
+                          >
+                            {renderExpandedDetails(payment)}
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>

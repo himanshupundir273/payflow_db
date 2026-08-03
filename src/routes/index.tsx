@@ -209,7 +209,7 @@ export const AppRoutes = () => {
       <Route
         path="/export"
         element={
-          <ProtectedRoute allowedRoles={['accounts']}>
+          <ProtectedRoute allowedRoles={['accounts', 'admin']}>
             <ExportPage />
           </ProtectedRoute>
         }

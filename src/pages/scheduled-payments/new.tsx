@@ -31,6 +31,8 @@ interface FormValues {
   advanceDetails: 'tax_invoice' | 'advance_(bill/PI)' | 'advance' | 'others';
   paymentAmount: string;
   itemDescription: string;
+  department: string;
+  endUse: string;
   companyName: string;
   companyBranch: string;
   bankName: string;
@@ -79,6 +81,8 @@ const validationSchema = Yup.object().shape({
       return !isNaN(number) && number > 0;
     }),
   itemDescription: Yup.string().required('Item description is required'),
+  department: Yup.string().optional(),
+  endUse: Yup.string().optional(),
   companyName: Yup.string().required('Company name is required'),
   companyBranch: Yup.string().required('Company branch is required'),
   bankName: Yup.string().required('Bank name is required'),
@@ -170,6 +174,8 @@ const NewScheduledPaymentPage: React.FC = () => {
     advanceDetails: 'tax_invoice',
     paymentAmount: '',
     itemDescription: '',
+    department: '',
+    endUse: '',
     companyName: '',
     companyBranch: '',
     bankName: '',
@@ -235,6 +241,8 @@ const NewScheduledPaymentPage: React.FC = () => {
         payment_amount: paymentAmount,
         balance_amount: balanceAmount,
         item_description: values.itemDescription,
+        department: values.department || null,
+        end_use: values.endUse || null,
         company_name: values.companyName,
         company_branch: values.companyBranch,
         bank_name: values.bankName,
