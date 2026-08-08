@@ -1239,6 +1239,14 @@ const PaymentDetailPage: React.FC = () => {
                   >
                     Approve
                   </Button>
+                  <Button
+                    variant="primary"
+                    icon={<CheckCircle2 className="h-5 w-5" />}
+                    onClick={handleProcess}
+                    className="w-full sm:w-auto"
+                  >
+                    Processed
+                  </Button>
                 </div>
               )}
 

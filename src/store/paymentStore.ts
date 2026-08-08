@@ -1102,6 +1102,55 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     return result;
   },
 
+  bulkPostponePayments: async (ids: string[], postponeDays: number) => {
+    set({ isLoading: true });
+
+    const result = await withNetworkCheck(async () => {
+      try {
+        const postponeDate = new Date();
+        postponeDate.setDate(postponeDate.getDate() + postponeDays);
+
+        const { data, error } = await supabase
+          .from('payments')
+          .update({
+            status: 'postponed',
+            postpone_date: postponeDate.toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .in('id', ids)
+          .select();
+
+        if (error) {
+          handleSupabaseError(error);
+          return { success: [], failed: ids };
+        }
+
+        const transformedPayments = await Promise.all(data.map((payment: any) => transformSinglePayment(payment)));
+
+        set(state => ({
+          payments: state.payments.map(p => {
+            const transformedPayment = transformedPayments.find(tp => tp.id === p.id);
+            return transformedPayment || p;
+          }),
+          isLoading: false
+        }));
+
+        get().applyFilters();
+        return { success: ids, failed: [] };
+      } catch (error) {
+        console.error('Error bulk postponing payments:', error);
+        return { success: [], failed: ids };
+      }
+    }, 'Failed to bulk postpone payments. Please check your internet connection.');
+
+    if (!result) {
+      set({ isLoading: false });
+      return { success: [], failed: ids };
+    }
+
+    return result;
+  },
+
   markAsProcessed: async (id: string, invoiceReceived?: 'yes' | 'no', paymentAmount?: number, reason?: string) => {
     set({ isLoading: true });
 

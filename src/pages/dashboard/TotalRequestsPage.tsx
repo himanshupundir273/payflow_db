@@ -21,6 +21,10 @@ const TotalRequestsPage: React.FC = () => {
     setSearchTerm,
     resetFilterOptions,
     deletePayment,
+    bulkApprovePayments,
+    bulkRejectPayments,
+    bulkPostponePayments,
+    bulkProcessPayments,
   } = usePaymentStore();
   const [localSearchTerm, setLocalSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -122,6 +126,32 @@ const TotalRequestsPage: React.FC = () => {
     }
   };
 
+  const refreshCurrentPage = () => {
+    fetchPayments(pagination.page, pagination.pageSize, true, filterOptions, sortOptions, searchTerm);
+  };
+
+  const handleBulkApprove = async (ids: string[]) => {
+    if (!user) return;
+    await bulkApprovePayments(ids, user);
+    refreshCurrentPage();
+  };
+
+  const handleBulkReject = async (ids: string[]) => {
+    if (!user) return;
+    await bulkRejectPayments(ids, user);
+    refreshCurrentPage();
+  };
+
+  const handleBulkPostpone = async (ids: string[], days: number) => {
+    await bulkPostponePayments(ids, days);
+    refreshCurrentPage();
+  };
+
+  const handleBulkProcess = async (ids: string[]) => {
+    await bulkProcessPayments(ids);
+    refreshCurrentPage();
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
@@ -206,6 +236,12 @@ const TotalRequestsPage: React.FC = () => {
         isLoading={isLoading}
         showActions={false}
         onDeletePayment={handleDeletePayment}
+        enableBulkSelection={user?.role === 'admin'}
+        maxSelections={10}
+        onBulkApprove={user?.role === 'admin' ? handleBulkApprove : undefined}
+        onBulkReject={user?.role === 'admin' ? handleBulkReject : undefined}
+        onBulkPostpone={user?.role === 'admin' ? handleBulkPostpone : undefined}
+        onBulkProcess={user?.role === 'admin' ? handleBulkProcess : undefined}
         serverPagination={{
           currentPage: pagination.page,
           pageSize: pagination.pageSize,

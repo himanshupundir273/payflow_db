@@ -40,6 +40,7 @@ interface PaymentTableProps {
   onBulkApprove?: (ids: string[]) => void;
   onBulkReject?: (ids: string[]) => void;
   onBulkProcess?: (ids: string[]) => void;
+  onBulkPostpone?: (ids: string[], days: number) => void;
   onBulkAccountsVerify?: (ids: string[]) => void;
   onBulkMarkInvoiceRecieved?: (ids: string[]) => void;
   onProcess?: (
@@ -87,6 +88,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
   onBulkApprove,
   onBulkReject,
   onBulkProcess,
+  onBulkPostpone,
   onProcess,
   onQuery,
   onAccountsQuery,
@@ -239,6 +241,8 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     isOpen: false,
     paymentId: "",
   });
+
+  const [bulkPostponeDialogOpen, setBulkPostponeDialogOpen] = useState(false);
 
   // Bulk selection state
   const [selectedPayments, setSelectedPayments] = useState<Set<string>>(
@@ -693,6 +697,16 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
     });
   };
 
+  const handleBulkPostponeClick = () => {
+    setBulkPostponeDialogOpen(true);
+  };
+
+  const handleBulkPostponeSubmit = (days: number) => {
+    onBulkPostpone?.(Array.from(selectedPayments), days);
+    setSelectedPayments(new Set());
+    setBulkPostponeDialogOpen(false);
+  };
+
   // Show/hide bulk actions based on selection
   React.useEffect(() => {
     setShowBulkActions(selectedPayments.size > 0);
@@ -1006,6 +1020,38 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                           Reject ({selectedPayments.size})
                         </span>
                       </Button>
+                      {typeof onBulkPostpone === "function" && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={handleBulkPostponeClick}
+                          disabled={selectedPayments.size === 0}
+                          className="text-xs sm:text-sm"
+                        >
+                          <span className="hidden sm:inline">
+                            Postpone Selected
+                          </span>
+                          <span className="sm:hidden">
+                            Postpone ({selectedPayments.size})
+                          </span>
+                        </Button>
+                      )}
+                      {typeof onBulkProcess === "function" && (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={handleBulkProcess}
+                          disabled={selectedPayments.size === 0}
+                          className="text-xs sm:text-sm"
+                        >
+                          <span className="hidden sm:inline">
+                            Mark Processed
+                          </span>
+                          <span className="sm:hidden">
+                            Processed ({selectedPayments.size})
+                          </span>
+                        </Button>
+                      )}
                     </>
                   ) : user?.role === "accounts" ? (
                     pageType === "overdue" ? (
@@ -2168,6 +2214,13 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
             setPostponeDialog((prev) => ({ ...prev, isOpen: false }));
           }
         }}
+        isLoading={isLoading}
+      />
+
+      <PostponeDialog
+        isOpen={bulkPostponeDialogOpen}
+        onClose={() => setBulkPostponeDialogOpen(false)}
+        onPostpone={handleBulkPostponeSubmit}
         isLoading={isLoading}
       />
     </>

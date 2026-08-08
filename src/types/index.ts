@@ -163,6 +163,7 @@ export interface PaymentState {
   bulkApprovePayments: (ids: string[], approver: User) => Promise<{ success: string[]; failed: string[] }>;
   bulkRejectPayments: (ids: string[], approver: User) => Promise<{ success: string[]; failed: string[] }>;
   bulkProcessPayments: (ids: string[]) => Promise<{ success: string[]; failed: string[] }>;
+  bulkPostponePayments: (ids: string[], postponeDays: number) => Promise<{ success: string[]; failed: string[] }>;
   bulkAccountsVerifyPayments: (ids: string[]) => Promise<{ success: string[]; failed: string[] }>;
   bulkMarkInvoiceRecieved?: (ids: string[]) =>Promise<{ success: string[]; failed: string[] }>;
   markAsProcessed: (id: string, invoiceReceived?: 'yes' | 'no',paymentAmount?: number, reason?: string) => Promise<boolean>;
