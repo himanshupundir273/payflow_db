@@ -28,17 +28,15 @@ const validationSchema = Yup.object().shape({
     .transform((value) => value?.trim().toUpperCase()),
   accountNumber: Yup.string()
     .required('Account number is required')
-    .matches(/^[0-9]+$/, 'Account number must contain only numbers')
-    .min(8, 'Account number must be at least 8 digits')
-    .max(20, 'Account number must not exceed 20 digits'),
-  // ifscCode: Yup.string()
-  //   .required('IFSC code is required')
-  //   .matches(
-  //     /^[A-Z]{4}0[A-Z0-9]{6}$/,
-  //     'Invalid IFSC code format (e.g., HDFC0001234)'
-  //   )
-  //   .length(11, 'IFSC code must be exactly 11 characters')
-  //   .transform((value) => value?.trim().toUpperCase()),
+    .matches(/^[A-Za-z0-9]+$/, 'Account number must contain only letters and numbers')
+    .min(8, 'Account number must be at least 8 characters')
+    .max(20, 'Account number must not exceed 20 characters'),
+  ifscCode: Yup.string()
+    .required('IFSC / Swift code is required')
+    .matches(/^[A-Z0-9]+$/, 'IFSC / Swift code must contain only letters and numbers')
+    .min(8, 'IFSC / Swift code must be at least 8 characters')
+    .max(11, 'IFSC / Swift code must not exceed 11 characters')
+    .transform((value) => value?.trim().toUpperCase()),
 });
 
 const AddVendorDialog: React.FC<AddVendorDialogProps> = ({
@@ -236,12 +234,12 @@ const AddVendorDialog: React.FC<AddVendorDialogProps> = ({
                     placeholder="Enter account number"
                     value={values.accountNumber}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const numericValue = e.target.value.replace(/[^0-9]/g, '');
-                      setFieldValue('accountNumber', numericValue);
+                      const alphanumericValue = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                      setFieldValue('accountNumber', alphanumericValue);
                     }}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Only numbers are allowed (8-20 digits)
+                    Alphanumeric values are allowed (8-20 characters)
                   </p>
                   {errors.accountNumber && touched.accountNumber && (
                     <p className="text-sm text-red-600">{errors.accountNumber}</p>
@@ -255,18 +253,18 @@ const AddVendorDialog: React.FC<AddVendorDialogProps> = ({
                   <Field
                     as={Input}
                     name="ifscCode"
-                    placeholder="e.g., HDFC0001234"
+                    placeholder="e.g., HDFC0001234 or SWIFT code"
                     error={touched.ifscCode && errors.ifscCode}
                     fullWidth
-                    // required
+                    required
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const upperValue = e.target.value.toUpperCase();
-                      setFieldValue('ifscCode', upperValue);
+                      const alphanumericValue = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                      setFieldValue('ifscCode', alphanumericValue);
                     }}
                     value={values.ifscCode}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Format: 4 letters + 0 + 6 alphanumeric characters
+                    Alphanumeric values are allowed (8-11 characters)
                   </p>
                 </div>
               </div>

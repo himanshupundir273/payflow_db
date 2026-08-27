@@ -24,12 +24,14 @@ const validationSchema = Yup.object().shape({
     .min(2, 'Vendor name must be at least 2 characters'),
   account_number: Yup.string()
     .required('Account number is required')
-    .matches(/^[0-9]+$/, 'Account number must contain only numbers')
-    .min(8, 'Account number must be at least 8 digits')
-    .max(20, 'Account number must not exceed 20 digits'),
+    .matches(/^[A-Za-z0-9]+$/, 'Account number must contain only letters and numbers')
+    .min(8, 'Account number must be at least 8 characters')
+    .max(20, 'Account number must not exceed 20 characters'),
   ifsc_code: Yup.string()
-    .required('IFSC code is required')
-    .matches(/^[A-Z]{4}0[A-Z0-9]{6}$/, 'Invalid IFSC code format')
+    .required('IFSC / Swift code is required')
+    .matches(/^[A-Z0-9]+$/, 'IFSC / Swift code must contain only letters and numbers')
+    .min(8, 'IFSC / Swift code must be at least 8 characters')
+    .max(11, 'IFSC / Swift code must not exceed 11 characters')
 });
 
 const VendorForm: React.FC<VendorFormProps> = ({ onSubmit, onCancel, isSubmitting, initialValues }) => {
@@ -95,12 +97,12 @@ const VendorForm: React.FC<VendorFormProps> = ({ onSubmit, onCancel, isSubmittin
                     placeholder="Enter account number"
                     value={values.account_number}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const numericValue = e.target.value.replace(/[^0-9]/g, '');
-                      setFieldValue('account_number', numericValue);
+                      const alphanumericValue = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                      setFieldValue('account_number', alphanumericValue);
                     }}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Only numbers are allowed (8-20 digits)
+                    Alphanumeric values are allowed (8-20 characters)
                   </p>
                   {errors.account_number && touched.account_number && (
                     <p className="text-sm text-red-600">{errors.account_number}</p>
@@ -120,12 +122,12 @@ const VendorForm: React.FC<VendorFormProps> = ({ onSubmit, onCancel, isSubmittin
                     placeholder="Enter IFSC code"
                     value={values.ifsc_code}
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      const upperValue = e.target.value.toUpperCase();
-                      setFieldValue('ifsc_code', upperValue);
+                      const alphanumericValue = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+                      setFieldValue('ifsc_code', alphanumericValue);
                     }}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    IFSC code will be automatically converted to uppercase
+                    Alphanumeric values are allowed (8-11 characters)
                   </p>
                   {errors.ifsc_code && touched.ifsc_code && (
                     <p className="text-sm text-red-600">{errors.ifsc_code}</p>
