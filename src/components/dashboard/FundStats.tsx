@@ -67,15 +67,16 @@ const FundStats: React.FC = () => {
     setFundAmount(formatNumber(value));
   };
 
-  // Add function to get cycle date range
   const getCycleDateRange = () => {
-    const now = new Date();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+    }).format(new Date());
+    const startOfToday = new Date(`${todayStr}T00:00:00+05:30`);
+    const startOfYesterday = new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000);
 
     return {
-      start: format(now, 'dd MMM'),
-      end: format(tomorrow, 'dd MMM')
+      start: format(startOfYesterday, 'dd MMM'),
+      end: format(startOfToday, 'dd MMM'),
     };
   };
 
