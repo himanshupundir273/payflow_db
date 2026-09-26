@@ -153,22 +153,7 @@ const ExportPage: React.FC = () => {
         .filter((p) => p.vendorId)
         .map((p) => p.vendorId);
 
-      const categoryIds = [
-        ...new Set(
-          searchedPayments
-            .map((p) => p.categoryId)
-            .filter((id): id is string => Boolean(id))
-        ),
-      ];
-      const subcategoryIds = [
-        ...new Set(
-          searchedPayments
-            .map((p) => p.subcategoryId)
-            .filter((id): id is string => Boolean(id))
-        ),
-      ];
-
-      const [{ data: vendors }, { data: categories }, { data: subcategories }, { data: currentDayId }] =
+      const [{ data: vendors }, { data: currentDayId }] =
         await Promise.all([
           vendorIds.length
             ? supabase
@@ -176,12 +161,6 @@ const ExportPage: React.FC = () => {
                 .select("id, account_number, ifsc_code")
                 .in("id", vendorIds)
             : Promise.resolve({ data: [] as { id: string; account_number: string; ifsc_code: string }[] }),
-          categoryIds.length
-            ? supabase.from("categories").select("id, name").in("id", categoryIds)
-            : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-          subcategoryIds.length
-            ? supabase.from("subcategories").select("id, name").in("id", subcategoryIds)
-            : Promise.resolve({ data: [] as { id: string; name: string }[] }),
           supabase.rpc("get_current_day_id"),
         ]);
 
@@ -207,18 +186,6 @@ const ExportPage: React.FC = () => {
         }, {} as Record<string, { accountNumber: string; ifscCode: string }>) ||
         {};
 
-      const categoryNames =
-        categories?.reduce((acc, category) => {
-          acc[category.id] = category.name;
-          return acc;
-        }, {} as Record<string, string>) || {};
-
-      const subcategoryNames =
-        subcategories?.reduce((acc, subcategory) => {
-          acc[subcategory.id] = subcategory.name;
-          return acc;
-        }, {} as Record<string, string>) || {};
-
       const headers = [
         "SR NO",
         "COMP",
@@ -228,8 +195,6 @@ const ExportPage: React.FC = () => {
         "AMOUNT",
         "Tota O/s",
         "DESCRIPION",
-        "Category",
-        "Subcategory",
         "Item Type",
         "Urgency",
         "Department",
@@ -290,9 +255,6 @@ const ExportPage: React.FC = () => {
           payment.paymentAmount || 0,
           payment.totalOutstanding || 0,
           payment.itemDescription || "N/A",
-          (payment.categoryId && categoryNames[payment.categoryId]) || "N/A",
-          (payment.subcategoryId && subcategoryNames[payment.subcategoryId]) ||
-            "N/A",
           payment.itemType || "N/A",
           getUrgencyLabel(payment.urgencyLevel),
           payment.department || "N/A",
@@ -303,7 +265,7 @@ const ExportPage: React.FC = () => {
           formatDate(payment.date),
         ]);
 
-        const urgencyCell = row.getCell(12);
+        const urgencyCell = row.getCell(10);
         urgencyCell.fill = {
           type: "pattern",
           pattern: "solid",
