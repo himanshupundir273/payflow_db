@@ -1870,32 +1870,13 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No authenticated user');
 
-      // Get current day ID first
-      const { data: currentDayId, error: dayIdError } = await supabase
-        .rpc('get_current_day_id');
-
-      if (dayIdError) throw dayIdError;
-
-      // Add fund to the funds table with the current day_id
-      const { error: fundError } = await supabase
-        .from('funds')
-        .insert({
-          amount,
-          added_by: user.id,
-          day_id: currentDayId
-        });
+      const { data: fundResult, error: fundError } = await supabase
+        .rpc('add_fund', { p_amount: amount });
 
       if (fundError) throw fundError;
 
-      // Get total funds available for current day to verify the addition
-      const { data: funds, error: fundsError } = await supabase
-        .from('funds')
-        .select('amount')
-        .eq('day_id', currentDayId);
-
-      if (fundsError) throw fundsError;
-
-      const totalFundAvailable = funds?.reduce((sum, fund) => sum + (fund.amount || 0), 0) || 0;
+      const currentDayId = fundResult?.day_id;
+      const totalFundAvailable = Number(fundResult?.total_fund_available || 0);
 
       // Update dashboard stats with the new fund amount
       set(state => ({
