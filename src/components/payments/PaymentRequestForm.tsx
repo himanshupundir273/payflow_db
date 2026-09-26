@@ -18,7 +18,7 @@ import {
 import * as Yup from 'yup';
 import { Plus, X, Upload, File, ChevronDown, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Vendor, User } from '../../types';
+import { Vendor, User, ITEM_TYPES, ItemType } from '../../types';
 import AddVendorDialog from './AddVendorDialog';
 import { convertToIndianWords } from '../../lib/numberToWords';
 import AddCategoryDialog from './AddCategoryDialog';
@@ -67,6 +67,7 @@ interface FormValues {
   subcategoryId: string | null; // Subcategory ID
   categoryName: string;
   subcategoryName: string;
+  itemType: ItemType | '';
   urgencyLevel: 'low' | 'medium' | 'high';
 }
 
@@ -190,6 +191,9 @@ const validationSchema = Yup.object().shape({
   priceCheckGuaranteedBy: Yup.string().required('Price check guaranteed by is required'),
   categoryId: Yup.string().nullable().required('Category is required'),
   subcategoryId: Yup.string().nullable().required('Subcategory is required'),
+  itemType: Yup.string()
+    .required('Item type is required')
+    .oneOf([...ITEM_TYPES], 'Please select a valid item type'),
   urgencyLevel: Yup.string()
     .required('Urgency level is required')
     .oneOf(['low', 'medium', 'high'], 'Please select a valid urgency level'),
@@ -387,6 +391,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
     subcategoryId: editingPaymentData ? JSON.parse(editingPaymentData).subcategoryId : null,
     categoryName: editingPaymentData ? JSON.parse(editingPaymentData).categoryName : '',
     subcategoryName: editingPaymentData ? JSON.parse(editingPaymentData).subcategoryName : '',
+    itemType: editingPaymentData ? JSON.parse(editingPaymentData).itemType : '',
     urgencyLevel: editingPaymentData ? JSON.parse(editingPaymentData).urgencyLevel : '',
   };
 
@@ -461,6 +466,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
         priceCheckGuaranteedBy: values.priceCheckGuaranteedBy,
         categoryId: values.categoryId,
         subcategoryId: values.subcategoryId,
+        itemType: values.itemType as ItemType,
         urgencyLevel: values.urgencyLevel,
       };
 
@@ -1388,6 +1394,32 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
                       {touched.subcategoryName && errors.subcategoryName && (
                         <p className="mt-1 text-sm text-error-600">
                           {errors.subcategoryName as string}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Item Type <span className="text-error-500">*</span>
+                      </label>
+                      <Field
+                        as="select"
+                        name="itemType"
+                        className={`block w-full rounded-md border ${touched.itemType && errors.itemType
+                          ? 'border-error-300'
+                          : 'border-gray-300'
+                          } shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-3 py-2 bg-white`}
+                      >
+                        <option value="">Select item type</option>
+                        {ITEM_TYPES.map((itemType) => (
+                          <option key={itemType} value={itemType}>
+                            {itemType}
+                          </option>
+                        ))}
+                      </Field>
+                      {touched.itemType && errors.itemType && (
+                        <p className="mt-1 text-sm text-error-600">
+                          {errors.itemType as string}
                         </p>
                       )}
                     </div>

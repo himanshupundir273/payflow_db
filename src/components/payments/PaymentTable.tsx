@@ -1369,6 +1369,11 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                             ? categoryNames[payment.categoryId] 
                             : payment.itemDescription}
                         </span>
+                        {payment.itemType && (
+                          <span className="text-xs text-gray-500 mt-1">
+                            {payment.itemType}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -1764,6 +1769,7 @@ const PaymentTable: React.FC<PaymentTableProps> = ({
                               {payment.categoryId && categoryNames[payment.categoryId] 
                                 ? categoryNames[payment.categoryId] 
                                 : payment.itemDescription}
+                              {payment.itemType ? ` • ${payment.itemType}` : ''}
                             </span>
                             {payment.accountsVerificationStatus ===
                               "verified" &&

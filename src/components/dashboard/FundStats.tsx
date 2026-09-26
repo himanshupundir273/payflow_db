@@ -91,7 +91,7 @@ const FundStats: React.FC = () => {
               <div className="flex flex-col">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-500 mb-1">Total Fund</span>
-                  {user?.role === 'accounts' && (
+                  {(user?.role === 'accounts' || user?.role === 'admin') && (
                     <button
                       onClick={() => setIsDialogOpen(true)}
                       className="p-1 hover:bg-gray-100 rounded-full transition-colors"

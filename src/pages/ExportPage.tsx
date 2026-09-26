@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import Input from "../components/ui/Input";
 import { format, startOfDay, endOfDay } from "date-fns";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
@@ -131,6 +131,20 @@ const ExportPage: React.FC = () => {
     }
   };
 
+  const getUrgencyLabel = (level?: string) => {
+    if (level === "high") return "High";
+    if (level === "medium") return "Medium";
+    if (level === "low") return "Low";
+    return level ? level.replace(/_/g, " ") : "N/A";
+  };
+
+  const getUrgencyFill = (level?: string) => {
+    if (level === "high") return "DC2626";
+    if (level === "medium") return "F59E0B";
+    if (level === "low") return "059669";
+    return "6B7280";
+  };
+
   const exportToExcel = async () => {
     setIsExporting(true);
     try {
@@ -139,12 +153,50 @@ const ExportPage: React.FC = () => {
         .filter((p) => p.vendorId)
         .map((p) => p.vendorId);
 
-      const { data: vendors } = await supabase
-        .from("vendors")
-        .select("id, account_number, ifsc_code")
-        .in("id", vendorIds);
+      const categoryIds = [
+        ...new Set(
+          searchedPayments
+            .map((p) => p.categoryId)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
+      const subcategoryIds = [
+        ...new Set(
+          searchedPayments
+            .map((p) => p.subcategoryId)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
 
-      // Create a map of vendor details for quick lookup
+      const [{ data: vendors }, { data: categories }, { data: subcategories }, { data: currentDayId }] =
+        await Promise.all([
+          vendorIds.length
+            ? supabase
+                .from("vendors")
+                .select("id, account_number, ifsc_code")
+                .in("id", vendorIds)
+            : Promise.resolve({ data: [] as { id: string; account_number: string; ifsc_code: string }[] }),
+          categoryIds.length
+            ? supabase.from("categories").select("id, name").in("id", categoryIds)
+            : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+          subcategoryIds.length
+            ? supabase.from("subcategories").select("id, name").in("id", subcategoryIds)
+            : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+          supabase.rpc("get_current_day_id"),
+        ]);
+
+      const { data: funds } = currentDayId
+        ? await supabase.from("funds").select("amount").eq("day_id", currentDayId)
+        : { data: [] };
+
+      const totalFundAvailable =
+        funds?.reduce((sum, fund) => sum + (fund.amount || 0), 0) || 0;
+      const exportPaymentsTotal = searchedPayments.reduce(
+        (sum, payment) => sum + (payment.paymentAmount || 0),
+        0
+      );
+      const netAvailable = totalFundAvailable - exportPaymentsTotal;
+
       const vendorDetails =
         vendors?.reduce((acc, vendor) => {
           acc[vendor.id] = {
@@ -155,66 +207,132 @@ const ExportPage: React.FC = () => {
         }, {} as Record<string, { accountNumber: string; ifscCode: string }>) ||
         {};
 
-      // Prepare data for export
-      const exportData = searchedPayments.map((payment, index) => {
-        // Safely format dates
-        const formatDate = (dateString: string) => {
-          try {
-            const date = new Date(dateString);
-            return isNaN(date.getTime()) ? "N/A" : format(date, "dd/MM/yyyy");
-          } catch (error) {
-            return "N/A";
-          }
-        };
+      const categoryNames =
+        categories?.reduce((acc, category) => {
+          acc[category.id] = category.name;
+          return acc;
+        }, {} as Record<string, string>) || {};
 
-        // Get vendor details if available
+      const subcategoryNames =
+        subcategories?.reduce((acc, subcategory) => {
+          acc[subcategory.id] = subcategory.name;
+          return acc;
+        }, {} as Record<string, string>) || {};
+
+      const headers = [
+        "SR NO",
+        "COMP",
+        "PARTY",
+        "ACCOUNTNO",
+        "IFSC",
+        "AMOUNT",
+        "Tota O/s",
+        "DESCRIPION",
+        "Category",
+        "Subcategory",
+        "Item Type",
+        "Urgency",
+        "Department",
+        "End Use",
+        "Pay Agst",
+        "Status",
+        "Requested by",
+        "Value Date",
+      ];
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Payments");
+
+      worksheet.addRow(["Total Fund", totalFundAvailable]);
+      worksheet.addRow(["Total Payments", exportPaymentsTotal]);
+      worksheet.addRow(["Net Available", netAvailable]);
+      worksheet.addRow([]);
+
+      const headerRow = worksheet.addRow(headers);
+      headerRow.eachCell((cell) => {
+        cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "1D4ED8" },
+        };
+        cell.alignment = { vertical: "middle" };
+      });
+
+      const formatDate = (dateString: string) => {
+        try {
+          const date = new Date(dateString);
+          return isNaN(date.getTime()) ? "N/A" : format(date, "dd/MM/yyyy");
+        } catch (error) {
+          return "N/A";
+        }
+      };
+
+      searchedPayments.forEach((payment, index) => {
         const vendorInfo = payment.vendorId
           ? vendorDetails[payment.vendorId]
           : null;
-
-        const accountNumber = vendorInfo?.accountNumber || "N/A";
-        const ifscCode = vendorInfo?.ifscCode || "N/A";
-        const amount = payment.paymentAmount || 0;
-        const valueDate = formatDate(payment.date);
-
         const payAgainst = payment.advanceDetails
           ? payment.advanceDetails.replace(/_/g, " ")
           : "N/A";
-
         const statusLabel = payment.status
           ? payment.status
               .replace(/_/g, " ")
               .replace(/\b\w/g, (c) => c.toUpperCase())
           : "N/A";
 
-        return {
-          "SR NO": index + 1,
-          COMP: payment.companyName || "N/A",
-          PARTY: payment.vendorName || "N/A",
-          ACCOUNTNO: accountNumber,
-          IFSC: ifscCode,
-          AMOUNT: amount,
-          "Tota O/s": payment.totalOutstanding || 0,
-          DESCRIPION: payment.itemDescription || "N/A",
-          Department: payment.department || "N/A",
-          "End Use": payment.endUse || "N/A",
-          "Pay Agst": payAgainst,
-          Status: statusLabel,
-          "Requested by": payment.requestedBy?.name || "N/A",
-          "Value Date": valueDate,
+        const row = worksheet.addRow([
+          index + 1,
+          payment.companyName || "N/A",
+          payment.vendorName || "N/A",
+          vendorInfo?.accountNumber || "N/A",
+          vendorInfo?.ifscCode || "N/A",
+          payment.paymentAmount || 0,
+          payment.totalOutstanding || 0,
+          payment.itemDescription || "N/A",
+          (payment.categoryId && categoryNames[payment.categoryId]) || "N/A",
+          (payment.subcategoryId && subcategoryNames[payment.subcategoryId]) ||
+            "N/A",
+          payment.itemType || "N/A",
+          getUrgencyLabel(payment.urgencyLevel),
+          payment.department || "N/A",
+          payment.endUse || "N/A",
+          payAgainst,
+          statusLabel,
+          payment.requestedBy?.name || "N/A",
+          formatDate(payment.date),
+        ]);
+
+        const urgencyCell = row.getCell(12);
+        urgencyCell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: getUrgencyFill(payment.urgencyLevel) },
         };
+        urgencyCell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+        urgencyCell.alignment = { horizontal: "center" };
       });
 
-      // Create workbook and worksheet
-      const workbook = XLSX.utils.book_new();
-      const worksheet = XLSX.utils.json_to_sheet(exportData);
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Payments");
-
-      // Generate Excel file
-      const excelBuffer = XLSX.write(workbook, {
-        bookType: "xlsx",
-        type: "array",
+      const summaryLabelStyle = { bold: true };
+      [1, 2, 3].forEach((rowNumber) => {
+        worksheet.getRow(rowNumber).getCell(1).font = summaryLabelStyle;
+        worksheet.getRow(rowNumber).getCell(2).numFmt = "#,##,##0";
       });
+      worksheet.getRow(3).getCell(2).font = {
+        bold: true,
+        color: { argb: netAvailable >= 0 ? "059669" : "DC2626" },
+      };
+
+      worksheet.columns.forEach((column, index) => {
+        let maxLength = headers[index]?.length || 10;
+        column.eachCell?.({ includeEmpty: false }, (cell) => {
+          const value = cell.value == null ? "" : String(cell.value);
+          maxLength = Math.max(maxLength, value.length);
+        });
+        column.width = Math.min(Math.max(maxLength + 2, 12), 40);
+      });
+
+      const excelBuffer = await workbook.xlsx.writeBuffer();
       const fileName = `Payment_Report_${format(
         new Date(),
         "yyyy-MM-dd"

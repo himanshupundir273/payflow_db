@@ -1,5 +1,8 @@
 export type UserRole = 'user' | 'admin' | 'accounts';
 
+export const ITEM_TYPES = ['Raw Materials', 'Consumable', 'Service', 'Payroll'] as const;
+export type ItemType = (typeof ITEM_TYPES)[number];
+
 export interface User {
   id: string;
   name: string;
@@ -76,6 +79,7 @@ export interface PaymentRequest {
   priceCheckGuaranteedBy?: string | null;
   categoryId?: string | null;
   subcategoryId?: string | null;
+  itemType?: ItemType | null;
   urgencyLevel: 'low' | 'medium' | 'high';
   postponeDate?: string | null;
   createdAt: string;

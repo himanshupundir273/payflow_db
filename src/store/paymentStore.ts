@@ -146,6 +146,7 @@ const transformSinglePayment = async (row: PaymentRow): Promise<PaymentRequest> 
     priceCheckGuaranteedBy: row.price_check_guaranteed_by || undefined,
     categoryId: row.category_id || undefined,
     subcategoryId: row.subcategory_id || undefined,
+    itemType: row.item_type || undefined,
     urgencyLevel: row.urgency_level || 'normal',
     postponeDate: row.postpone_date || undefined,
     createdAt: row.created_at,
@@ -521,6 +522,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               priceCheckGuaranteedBy: row.price_check_guaranteed_by || undefined,
               categoryId: row.category_id || undefined,
               subcategoryId: row.subcategory_id || undefined,
+              itemType: row.item_type || undefined,
               urgencyLevel: row.urgency_level || 'normal',
               createdAt: row.created_at,
               updatedAt: row.updated_at,
@@ -703,6 +705,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
           price_check_guaranteed_by: paymentData.priceCheckGuaranteedBy,
           category_id: paymentData.categoryId,
           subcategory_id: paymentData.subcategoryId,
+          item_type: paymentData.itemType,
           urgency_level: paymentData.urgencyLevel
         };
 
@@ -1441,6 +1444,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
             price_check_guaranteed_by: paymentData.priceCheckGuaranteedBy,
             category_id: paymentData.categoryId,
             subcategory_id: paymentData.subcategoryId,
+            item_type: paymentData.itemType,
             ...(paymentData.urgencyLevel && { urgency_level: paymentData.urgencyLevel }),
             updated_at: new Date().toISOString()
           })
@@ -1840,6 +1844,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
               priceCheckGuaranteedBy: row.price_check_guaranteed_by || undefined,
               categoryId: row.category_id || undefined,
               subcategoryId: row.subcategory_id || undefined,
+              itemType: row.item_type || undefined,
               urgencyLevel: row.urgency_level || 'normal',
               createdAt: row.created_at,
               updatedAt: row.updated_at

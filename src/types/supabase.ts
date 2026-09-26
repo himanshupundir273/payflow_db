@@ -102,6 +102,7 @@ export interface Database {
           price_check_guaranteed_by: string | null
           category_id: string | null
           subcategory_id: string | null
+          item_type: 'Raw Materials' | 'Consumable' | 'Service' | 'Payroll' | null
           urgency_level: 'low' | 'medium' | 'high'
           postpone_date: string | null
           created_at: string
@@ -142,6 +143,7 @@ export interface Database {
           price_check_guaranteed_by?: string | null
           category_id?: string | null
           subcategory_id?: string | null
+          item_type?: 'Raw Materials' | 'Consumable' | 'Service' | 'Payroll' | null
           urgency_level?: 'low' | 'medium' | 'high'
           postpone_date?: string | null
           created_at?: string
@@ -182,6 +184,7 @@ export interface Database {
           price_check_guaranteed_by?: string | null
           category_id?: string | null
           subcategory_id?: string | null
+          item_type?: 'Raw Materials' | 'Consumable' | 'Service' | 'Payroll' | null
           urgency_level?: 'low' | 'medium' | 'high'
           postpone_date?: string | null
           created_at?: string

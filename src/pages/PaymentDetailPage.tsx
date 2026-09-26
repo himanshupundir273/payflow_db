@@ -551,6 +551,7 @@ const PaymentDetailPage: React.FC = () => {
       cpp: payment.cpp || '',
       categoryId: payment.categoryId || '',
       subcategoryId: payment.subcategoryId || '',
+      itemType: payment.itemType || '',
       quantityCheckedBy: payment.quantityCheckedBy || '',
       qualityCheckedBy: payment.qualityCheckedBy || '',
       purchaseOwner: payment.purchaseOwner || '',
@@ -894,6 +895,12 @@ const PaymentDetailPage: React.FC = () => {
                         <CheckCircle2 className="h-4 w-4 text-success-600" />
                       )}
                     </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row justify-between">
+                    <span className="text-sm text-gray-500">Item Type:</span>
+                    <span className="text-sm font-semibold text-gray-900">
+                      {payment.itemType || 'Not provided'}
+                    </span>
                   </div>
                   <div className="flex flex-col sm:flex-row justify-between">
                     <span className="text-sm text-gray-500">Company/Branch:</span>

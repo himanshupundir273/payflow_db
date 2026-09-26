@@ -181,6 +181,7 @@ CREATE TABLE IF NOT EXISTS "public"."payments" (
     "payment_amount" numeric NOT NULL,
     "balance_amount" numeric NOT NULL,
     "item_description" "text" NOT NULL,
+    "item_type" "text",
     "requested_by" "uuid" NOT NULL,
     "approved_by" "uuid",
     "company_name" "text" NOT NULL,
@@ -443,23 +444,23 @@ CREATE POLICY "Admins can view all payments" ON "public"."payments" FOR SELECT U
 
 
 
-CREATE POLICY "Allow accounts users to delete funds" ON "public"."funds" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Allow admin and accounts users to delete funds" ON "public"."funds" FOR DELETE TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."users"
-  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = 'accounts'::"text")))));
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"text", 'accounts'::"text"]))))));
 
 
 
-CREATE POLICY "Allow accounts users to insert funds" ON "public"."funds" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
+CREATE POLICY "Allow admin and accounts users to insert funds" ON "public"."funds" FOR INSERT TO "authenticated" WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."users"
-  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = 'accounts'::"text")))));
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"text", 'accounts'::"text"]))))));
 
 
 
-CREATE POLICY "Allow accounts users to update funds" ON "public"."funds" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
+CREATE POLICY "Allow admin and accounts users to update funds" ON "public"."funds" FOR UPDATE TO "authenticated" USING ((EXISTS ( SELECT 1
    FROM "public"."users"
-  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = 'accounts'::"text"))))) WITH CHECK ((EXISTS ( SELECT 1
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"text", 'accounts'::"text"])))))) WITH CHECK ((EXISTS ( SELECT 1
    FROM "public"."users"
-  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = 'accounts'::"text")))));
+  WHERE (("users"."id" = "auth"."uid"()) AND ("users"."role" = ANY (ARRAY['admin'::"text", 'accounts'::"text"]))))));
 
 
 
