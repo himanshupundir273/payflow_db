@@ -21,7 +21,13 @@ export const withNetworkCheck = async <T>(
   try {
     return await operation();
   } catch (error) {
-    showErrorToast(errorMessage);
+    const actualMessage =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error && 'message' in error
+          ? String((error as { message: unknown }).message)
+          : '';
+    showErrorToast(actualMessage || errorMessage);
     return null;
   }
 }; 

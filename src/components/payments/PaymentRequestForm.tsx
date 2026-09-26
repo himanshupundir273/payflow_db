@@ -506,7 +506,7 @@ const PaymentRequestForm: React.FC<PaymentRequestFormProps> = ({ editingPaymentI
         });
 
         if (!addResult) {
-          throw new Error('Failed to create payment');
+          return;
         }
 
         showSuccessToast('Payment request submitted');

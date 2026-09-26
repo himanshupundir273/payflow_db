@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { PaymentRequest, FilterOptions, User, DashboardStats, PaymentState } from '../types';
+import { PaymentRequest, FilterOptions, User, DashboardStats, PaymentState, ITEM_TYPES, ItemType } from '../types';
 import { supabase, handleSupabaseError } from '../lib/supabase';
 import type { Database } from '../types/supabase';
 import { showSuccessToast, showErrorToast } from '../lib/toast';
@@ -7,6 +7,24 @@ import { withNetworkCheck } from '../lib/network';
 
 type PaymentRow = Database['public']['Tables']['payments']['Row'];
 type PaymentInsert = Database['public']['Tables']['payments']['Insert'];
+
+const toUuidOrNull = (value?: string | null) =>
+  value && value.trim() ? value : null;
+
+const toValidItemType = (value?: string | null): ItemType | null =>
+  value && ITEM_TYPES.includes(value as ItemType) ? (value as ItemType) : null;
+
+const isMissingColumnError = (error: unknown, column: string) => {
+  const message = (error as { message?: string })?.message?.toLowerCase() || '';
+  const code = (error as { code?: string })?.code;
+  return (
+    message.includes(column.toLowerCase()) &&
+    (message.includes('schema cache') ||
+      message.includes('column') ||
+      code === 'PGRST204' ||
+      code === '42703')
+  );
+};
 
 
 interface SortOptions {
@@ -682,40 +700,50 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         const newPayment: PaymentInsert = {
           date: paymentData.date,
           vendor_name: paymentData.vendorName,
-          vendor_id: paymentData.vendorId,
+          vendor_id: toUuidOrNull(paymentData.vendorId),
           total_outstanding: paymentData.totalOutstanding,
           advance_details: paymentData.advanceDetails,
           payment_amount: paymentData.paymentAmount,
           balance_amount: paymentData.balanceAmount,
           item_description: paymentData.itemDescription,
-          department: paymentData.department,
-          end_use: paymentData.endUse,
+          department: paymentData.department || null,
+          end_use: paymentData.endUse || null,
           requested_by: user.id,
           company_name: paymentData.companyName,
           company_branch: paymentData.companyBranch,
           bank_name: paymentData.bankName,
           payment_mode: paymentData.paymentMode,
           status: 'pending',
-          lpr: paymentData.lpr,
-          ioa: paymentData.ioa,
-          cpp: paymentData.cpp,
-          quantity_checked_by: paymentData.quantityCheckedBy,
-          quality_checked_by: paymentData.qualityCheckedBy,
-          purchase_owner: paymentData.purchaseOwner,
-          price_check_guaranteed_by: paymentData.priceCheckGuaranteedBy,
-          category_id: paymentData.categoryId,
-          subcategory_id: paymentData.subcategoryId,
-          item_type: paymentData.itemType,
+          lpr: paymentData.lpr || null,
+          ioa: paymentData.ioa || null,
+          cpp: paymentData.cpp || null,
+          quantity_checked_by: toUuidOrNull(paymentData.quantityCheckedBy),
+          quality_checked_by: toUuidOrNull(paymentData.qualityCheckedBy),
+          purchase_owner: toUuidOrNull(paymentData.purchaseOwner),
+          price_check_guaranteed_by: toUuidOrNull(paymentData.priceCheckGuaranteedBy),
+          category_id: toUuidOrNull(paymentData.categoryId),
+          subcategory_id: toUuidOrNull(paymentData.subcategoryId),
+          item_type: toValidItemType(paymentData.itemType),
           urgency_level: paymentData.urgencyLevel
         };
 
-        const { data: payment, error: paymentError } = await supabase
+        let { data: payment, error: paymentError } = await supabase
           .from('payments')
           .insert(newPayment)
           .select()
           .single();
 
+        if (paymentError && isMissingColumnError(paymentError, 'item_type')) {
+          const { item_type: _ignored, ...paymentWithoutItemType } = newPayment;
+          ({ data: payment, error: paymentError } = await supabase
+            .from('payments')
+            .insert(paymentWithoutItemType)
+            .select()
+            .single());
+        }
+
         if (paymentError) throw paymentError;
+        if (!payment) throw new Error('Failed to create payment');
 
         // Upload files and create attachments
         if (paymentData.attachments && paymentData.attachments.length > 0) {
@@ -783,7 +811,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         console.error('Error adding payment:', error);
         throw error;
       }
-    }, 'Failed to add payment. Please check your internet connection.');
+    }, 'Failed to add payment.');
 
     if (!result) {
       set({ isLoading: false });
@@ -1418,37 +1446,46 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         if (fetchError) throw fetchError;
         if (!existingPayment) throw new Error('Payment not found');
 
-        // Update payment details
-        const { error: updateError } = await supabase
-          .from('payments')
-          .update({
+        const paymentUpdate = {
             vendor_name: paymentData.vendorName,
             total_outstanding: paymentData.totalOutstanding,
             advance_details: paymentData.advanceDetails,
             payment_amount: paymentData.paymentAmount,
             balance_amount: paymentData.balanceAmount,
             item_description: paymentData.itemDescription,
-            department: paymentData.department,
-            end_use: paymentData.endUse,
+            department: paymentData.department || null,
+            end_use: paymentData.endUse || null,
             company_name: paymentData.companyName,
             company_branch: paymentData.companyBranch,
             bank_name: paymentData.bankName,
             payment_mode: paymentData.paymentMode,
             status: existingPayment.status === 'query_raised' ? 'pending' : existingPayment.status,
-            lpr: paymentData.lpr,
-            ioa: paymentData.ioa,
-            cpp: paymentData.cpp,
-            quantity_checked_by: paymentData.quantityCheckedBy,
-            quality_checked_by: paymentData.qualityCheckedBy,
-            purchase_owner: paymentData.purchaseOwner,
-            price_check_guaranteed_by: paymentData.priceCheckGuaranteedBy,
-            category_id: paymentData.categoryId,
-            subcategory_id: paymentData.subcategoryId,
-            item_type: paymentData.itemType,
+            lpr: paymentData.lpr || null,
+            ioa: paymentData.ioa || null,
+            cpp: paymentData.cpp || null,
+            quantity_checked_by: toUuidOrNull(paymentData.quantityCheckedBy),
+            quality_checked_by: toUuidOrNull(paymentData.qualityCheckedBy),
+            purchase_owner: toUuidOrNull(paymentData.purchaseOwner),
+            price_check_guaranteed_by: toUuidOrNull(paymentData.priceCheckGuaranteedBy),
+            category_id: toUuidOrNull(paymentData.categoryId),
+            subcategory_id: toUuidOrNull(paymentData.subcategoryId),
+            item_type: toValidItemType(paymentData.itemType),
             ...(paymentData.urgencyLevel && { urgency_level: paymentData.urgencyLevel }),
             updated_at: new Date().toISOString()
-          })
+          };
+
+        let { error: updateError } = await supabase
+          .from('payments')
+          .update(paymentUpdate)
           .eq('id', id);
+
+        if (updateError && isMissingColumnError(updateError, 'item_type')) {
+          const { item_type: _ignored, ...updateWithoutItemType } = paymentUpdate;
+          ({ error: updateError } = await supabase
+            .from('payments')
+            .update(updateWithoutItemType)
+            .eq('id', id));
+        }
 
         if (updateError) throw updateError;
 
@@ -1568,7 +1605,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
         console.error('Error updating payment:', error);
         throw error;
       }
-    }, 'Failed to update payment. Please check your internet connection.');
+    }, 'Failed to update payment.');
 
     if (!result) {
       set({ isLoading: false });
