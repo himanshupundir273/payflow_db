@@ -1,6 +1,6 @@
 export type UserRole = 'user' | 'admin' | 'accounts';
 
-export const ITEM_TYPES = ['Raw Materials', 'Consumable', 'Service', 'Payroll'] as const;
+export const ITEM_TYPES = ['Raw Materials', 'Consumable', 'Service', 'Payroll', 'Incentive'] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 
 export interface User {
